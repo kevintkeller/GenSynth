@@ -10,25 +10,36 @@ What this determines:
 
 """
 def estimate_pitch(y, sr):
-    f0, voiced_flag, voiced_probs = librosa.pyin(
-        y,
-        fmin=librosa.note_to_hz("C2"),
-        fmax=librosa.note_to_hz("C7"),
-        frame_length=2048,
-        hop_length=512
-    )
+    try:
+        f0, voiced_flag, voiced_probs = librosa.pyin(
+            y,
+            fmin=librosa.note_to_hz("C2"),
+            fmax=librosa.note_to_hz("C7"),
+            frame_length=2048,
+            hop_length=512
+        )
+    except Exception:
+        # Fallback to YIN if pyin fails
+        f0 = librosa.yin(
+            y,
+            fmin=librosa.note_to_hz("C1"),
+            fmax=librosa.note_to_hz("C7"),
+            sr=sr
+        )
 
     valid_f0 = f0[~np.isnan(f0)]
 
     if len(valid_f0) == 0:
         return {
-            "mean_pitch": 0,
-            "pitch_std": 0,
-            "pitch_availability": 0
+            "mean_pitch": 0.0,
+            "pitch_std": 0.0,
+            "pitch_availability": 0.0
         }
+    
     mean_pitch = np.mean(valid_f0)
     pitch_std = np.std(valid_f0)
-    pitch_stability = 1 - (pitch_std / mean_pitch)
+
+    pitch_stability = max(0.0, 1.0 - (pitch_std / mean_pitch))
 
     return {
         "mean_pitch": float(mean_pitch),
