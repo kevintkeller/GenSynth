@@ -7,6 +7,7 @@ Tweak RULES_CONFIG to adjust behavior without changing logic.
 """
 
 from math import log2
+from typing import Optional
 
 from mapping.vital_params import CONTROLLED_PARAMS, get_controlled_params_set
 
@@ -290,7 +291,7 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
     params.pop("osc_1_tune", None)
 
 
-def build_vital_parameters(features: dict, config: dict | None = None) -> dict:
+def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dict:
     """
     Map feature vector to Vital parameter dict.
     Only includes keys in CONTROLLED_PARAMS so schema/ML stay in sync.
