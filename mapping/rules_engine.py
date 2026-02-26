@@ -6,10 +6,11 @@ Designed for ~70% accuracy and easy tuning; same param set will feed ML later.
 Tweak RULES_CONFIG to adjust behavior without changing logic.
 """
 
+import math
 from math import log2
 from typing import Optional
 
-from mapping.vital_params import CONTROLLED_PARAMS, get_controlled_params_set
+from mapping.vital_params import get_controlled_params_set
 
 
 # -----------------------------------------------------------------------------
@@ -509,6 +510,17 @@ def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dic
     params.update(_pitch_params(features, cfg))
     _acoustic_like_overrides(params, features, cfg)
 
-    # Only return params we officially control (for apply_parameters and ML)
+    # Only return params we officially control; ensure no NaN/Inf (Vital can crash)
     allowed = get_controlled_params_set()
-    return {k: v for k, v in params.items() if k in allowed}
+    out = {}
+    for k, v in params.items():
+        if k not in allowed:
+            continue
+        if isinstance(v, (int, float)) and not math.isfinite(v):
+            v = 0.0
+        elif isinstance(v, float):
+            v = max(-1e6, min(1e6, v))
+        elif isinstance(v, int):
+            v = max(-1000000, min(1000000, v))
+        out[k] = v
+    return out

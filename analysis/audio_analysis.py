@@ -1,7 +1,15 @@
 # analysis/audio_analysis.py
 
+import math
 import librosa
 import numpy as np
+
+
+def _finite_float(x, default=0.0):
+    """Ensure value is a finite float for downstream (Vital presets must have no NaN/Inf)."""
+    if isinstance(x, (int, float)) and math.isfinite(x):
+        return float(x)
+    return default
 
 
 def analyze_audio(file_path: str) -> dict:
@@ -126,19 +134,19 @@ def analyze_audio(file_path: str) -> dict:
     harmonic_richness = float(np.clip(harmonic_count / 20.0, 0.0, 1.0))
 
     return {
-        "spectral_centroid": float(spectral_centroid),
-        "spectral_rolloff": float(spectral_rolloff),
-        "spectral_flatness": spectral_flatness,
-        "spectral_flux": spectral_flux,
-        "fundamental_freq": fundamental_freq,
-        "harmonic_ratio": harmonic_ratio,
-        "attack_time": attack_time,
-        "decay_time": float(np.clip(decay_time, 0.01, 4.0)),
-        "sustain_ratio": sustain_ratio,
-        "release_time": float(np.clip(release_time, 0.02, 4.0)),
-        "sustain_energy": sustain_energy,
-        "zero_crossing_rate": zcr,
-        "harmonic_odd_ratio": odd_ratio,
-        "harmonic_richness": harmonic_richness,
-        "sample_rate": float(sr),
+        "spectral_centroid": _finite_float(spectral_centroid, 2000.0),
+        "spectral_rolloff": _finite_float(spectral_rolloff, 4000.0),
+        "spectral_flatness": _finite_float(spectral_flatness, 0.1),
+        "spectral_flux": _finite_float(spectral_flux, 0.5),
+        "fundamental_freq": _finite_float(fundamental_freq, 110.0),
+        "harmonic_ratio": _finite_float(harmonic_ratio, 0.5),
+        "attack_time": _finite_float(attack_time, 0.05),
+        "decay_time": _finite_float(np.clip(decay_time, 0.01, 4.0), 0.2),
+        "sustain_ratio": _finite_float(sustain_ratio, 0.3),
+        "release_time": _finite_float(np.clip(release_time, 0.02, 4.0), 0.3),
+        "sustain_energy": _finite_float(sustain_energy, 0.1),
+        "zero_crossing_rate": _finite_float(zcr, 0.05),
+        "harmonic_odd_ratio": _finite_float(odd_ratio, 0.5),
+        "harmonic_richness": _finite_float(harmonic_richness, 0.5),
+        "sample_rate": _finite_float(sr, 44100.0),
     }

@@ -31,11 +31,15 @@ def _ensure_env1_routes_to_osc_level(settings: dict) -> None:
 
 
 def apply_parameters(template: dict, param_updates: dict) -> dict:
-    """Apply only controlled params that exist in the template. Safe for ML output."""
+    """
+    Apply only controlled params that exist in the template and are numeric.
+    Values are sanitized (no NaN/Inf) so Vital never crashes on load.
+    """
     preset = deepcopy(template)
     settings = preset["settings"]
     allowed = filter_to_controlled(param_updates, settings)
     for key, value in allowed.items():
-        settings[key] = value
+        if key in settings and isinstance(settings[key], (int, float)):
+            settings[key] = value
     _ensure_env1_routes_to_osc_level(settings)
     return preset

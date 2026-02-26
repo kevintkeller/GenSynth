@@ -5,6 +5,11 @@ Use this for: applying params to template, ML target vector ordering, validation
 
 Template reference: blank preset with only OSC 1 sine on; filter/LFO/FX exist but off/default.
 """
+import math
+
+# Vital expects finite floats; some params are 0/1 (on/off). Never write NaN/Inf.
+SAFE_FLOAT_MIN = -1e6
+SAFE_FLOAT_MAX = 1e6
 
 # All parameter names we may write. Order is stable for ML (e.g. dataset columns).
 CONTROLLED_PARAMS = (
@@ -142,14 +147,43 @@ def get_controlled_params_set():
     return set(CONTROLLED_PARAMS)
 
 
+def _sanitize_value(value, template_value):
+    """
+    Return a value safe for Vital: no NaN/Inf, same type as template (int/float).
+    Clamp to finite range so the plugin never crashes on load.
+    """
+    if template_value is None:
+        return 0.0
+    if not isinstance(template_value, (int, float)):
+        return None  # do not overwrite non-numeric keys (e.g. sample, modulations)
+    if isinstance(value, (int, float)):
+        if math.isfinite(value):
+            out = float(value)
+        else:
+            out = float(template_value) if math.isfinite(template_value) else 0.0
+    else:
+        out = float(template_value) if isinstance(template_value, (int, float)) and math.isfinite(template_value) else 0.0
+    out = max(SAFE_FLOAT_MIN, min(SAFE_FLOAT_MAX, out))
+    if isinstance(template_value, int):
+        return int(round(out))
+    return float(out)
+
+
 def filter_to_controlled(params: dict, template_settings: dict) -> dict:
     """
     Return only params that are in CONTROLLED_PARAMS and exist in the template.
-    Keeps output safe for apply_parameters and avoids writing unknown keys.
+    Only includes keys where the template value is numeric (so we never overwrite
+    list/dict like 'sample', 'modulations'). Values are sanitized (no NaN/Inf).
     """
     allowed = get_controlled_params_set()
-    return {
-        k: v
-        for k, v in params.items()
-        if k in allowed and k in template_settings
-    }
+    result = {}
+    for k, v in params.items():
+        if k not in allowed or k not in template_settings:
+            continue
+        template_val = template_settings[k]
+        if not isinstance(template_val, (int, float)):
+            continue
+        sanitized = _sanitize_value(v, template_val)
+        if sanitized is not None:
+            result[k] = sanitized
+    return result
