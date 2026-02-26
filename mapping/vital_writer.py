@@ -4,10 +4,14 @@ import json
 import math
 
 
+# Match Vital's typical export range so the loader doesn't choke.
+SANITIZE_MIN = -1000.0
+SANITIZE_MAX = 1000.0
+
+
 def _sanitize_for_json(obj):
     """
-    Recursively replace NaN/Inf in preset so Vital (and JSON) never see invalid numbers.
-    Vital can crash on load if any setting is NaN or Inf.
+    Recursively replace NaN/Inf and clamp numbers so Vital never crashes on load.
     """
     if isinstance(obj, dict):
         return {k: _sanitize_for_json(v) for k, v in obj.items()}
@@ -16,16 +20,19 @@ def _sanitize_for_json(obj):
     if isinstance(obj, float):
         if not math.isfinite(obj):
             return 0.0
-        return max(-1e6, min(1e6, obj))
+        return max(SANITIZE_MIN, min(SANITIZE_MAX, obj))
     if isinstance(obj, int):
         if not math.isfinite(obj):
             return 0
-        return max(-1e6, min(1e6, obj))
+        return max(int(SANITIZE_MIN), min(int(SANITIZE_MAX), obj))
     return obj
 
 
 def export_vital_preset(preset_data: dict, output_path: str):
-    """Write preset to disk; sanitize all numbers so Vital never sees NaN/Inf."""
+    """
+    Write preset to disk. Sanitize numbers; use single-line JSON like the template
+    so Vital's parser sees the format it expects.
+    """
     safe = _sanitize_for_json(preset_data)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(safe, f, indent=2, allow_nan=False)
+        json.dump(safe, f, separators=(",", ":"), allow_nan=False)

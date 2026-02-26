@@ -7,9 +7,9 @@ Template reference: blank preset with only OSC 1 sine on; filter/LFO/FX exist bu
 """
 import math
 
-# Vital expects finite floats; some params are 0/1 (on/off). Never write NaN/Inf.
-SAFE_FLOAT_MIN = -1e6
-SAFE_FLOAT_MAX = 1e6
+# Vital can crash on very large numbers; keep within known doc ranges (e.g. env 0-32s).
+SAFE_FLOAT_MIN = -1000.0
+SAFE_FLOAT_MAX = 1000.0
 
 # All parameter names we may write. Order is stable for ML (e.g. dataset columns).
 CONTROLLED_PARAMS = (
