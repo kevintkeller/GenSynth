@@ -36,20 +36,29 @@ def _validate_preset_structure(data: dict) -> None:
 
 
 def _format_json_number(v):
-    """Format a number for JSON so Vital's parser accepts it (no scientific notation for small numbers)."""
+    """Format a number for JSON so Vital's parser accepts it. No scientific notation; round to avoid float noise."""
     if isinstance(v, int):
         return str(v)
     if not math.isfinite(v):
         return "0.0"
-    v = max(SANITIZE_MIN, min(SANITIZE_MAX, v))
-    s = repr(v)
-    if "e" in s.lower() and abs(v) < 1e-2:
-        return format(v, ".10f").rstrip("0").rstrip(".")
-    return s
+    v = max(SANITIZE_MIN, min(SANITIZE_MAX, float(v)))
+    # Round to 10 decimal places to avoid 1.0499999999999998-style values that can upset C++ parsers
+    v = round(v, 10)
+    if v == int(v) and abs(v) < 1e15:
+        return str(int(v))
+    # Always use decimal form, never scientific (e.g. 0.00001 not 1e-5)
+    s = format(v, ".10f").rstrip("0").rstrip(".")
+    return s if s else "0.0"
 
 
 # JSON number: integer or float, optional exponent
 _JSON_NUM = r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+
+
+def export_zero_change(template_path: str, output_path: str):
+    """Copy template to output unchanged. Use to verify Vital can open the template after a copy."""
+    import shutil
+    shutil.copy2(template_path, output_path)
 
 
 def export_vital_preset_by_patch(template_path: str, param_updates: dict, output_path: str):
@@ -88,7 +97,7 @@ def export_vital_preset(preset_data: dict, output_path: str, template_path: str 
             if not isinstance(v, (int, float)) or not math.isfinite(v):
                 continue
             v = max(SANITIZE_MIN, min(SANITIZE_MAX, v)) if isinstance(v, float) else v
-            updates[k] = int(v) if isinstance(v, float) and v == int(v) and abs(v) < 1e10 else v
+            updates[k] = v
         export_vital_preset_by_patch(template_path, updates, output_path)
         return
     safe = _sanitize_for_json(preset_data)
