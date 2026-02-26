@@ -50,6 +50,26 @@ PATCH_CORE_ONLY_PARAMS = frozenset(
     )
 )
 
+# When core-only, also patch these to turn effects off so preset matches dry input (e.g. piano).
+# Only on/off and mix/dry_wet; safe 0/1 and 0.0 so Vital won't crash.
+PATCH_FX_OFF_WHEN_CORE_ONLY = {
+    "distortion_on": 0,
+    "distortion_mix": 0.0,
+    "chorus_on": 0,
+    "chorus_dry_wet": 0.0,
+    "reverb_on": 0,
+    "reverb_dry_wet": 0.0,
+    "delay_on": 0,
+    "delay_dry_wet": 0.0,
+    "compressor_on": 0,
+    "compressor_mix": 0.0,
+    "phaser_on": 0,
+    "phaser_dry_wet": 0.0,
+    "flanger_on": 0,
+    "flanger_dry_wet": 0.0,
+    "eq_on": 0,
+}
+
 
 def _sanitize_for_json(obj):
     """Recursively replace NaN/Inf and clamp numbers. Preserve dict/list structure."""
@@ -151,6 +171,8 @@ def export_vital_preset(preset_data: dict, output_path: str, template_path: str 
             else:
                 v = max(SANITIZE_MIN, min(SANITIZE_MAX, v))
             updates[k] = v
+        if core_only:
+            updates.update(PATCH_FX_OFF_WHEN_CORE_ONLY)
         export_vital_preset_by_patch(template_path, updates, output_path)
         return
     safe = _sanitize_for_json(preset_data)

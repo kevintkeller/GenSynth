@@ -100,6 +100,17 @@ def analyze_audio(file_path: str) -> dict:
     # Zero crossing rate (helps with noisiness/brightness)
     zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
 
+    # Transient vs body brightness: centroid at attack vs later (piano is bright at hit, duller in tail)
+    centroid_frames = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length)[0]
+    n_frames = len(centroid_frames)
+    transient_win = 3
+    transient_start = max(0, peak_index - transient_win)
+    transient_end = min(n_frames, peak_index + transient_win + 1)
+    transient_centroid = float(np.mean(centroid_frames[transient_start:transient_end])) if transient_end > transient_start else spectral_centroid
+    body_start = min(peak_index + max(1, n_frames // 10), n_frames - 1)
+    body_end = min(peak_index + int(n_frames * 0.6), n_frames)
+    body_centroid = float(np.mean(centroid_frames[body_start:body_end])) if body_end > body_start else spectral_centroid
+
     # Harmonic character: odd vs even harmonic balance, and harmonic richness
     # Use spectrum around the transient (peak) for timbre
     n_fft = 2048
@@ -135,6 +146,8 @@ def analyze_audio(file_path: str) -> dict:
 
     return {
         "spectral_centroid": _finite_float(spectral_centroid, 2000.0),
+        "transient_centroid": _finite_float(transient_centroid, 2000.0),
+        "body_centroid": _finite_float(body_centroid, 2000.0),
         "spectral_rolloff": _finite_float(spectral_rolloff, 4000.0),
         "spectral_flatness": _finite_float(spectral_flatness, 0.1),
         "spectral_flux": _finite_float(spectral_flux, 0.5),

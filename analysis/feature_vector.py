@@ -48,11 +48,31 @@ def build_feature_vector(raw_features: dict) -> dict:
     # Tonal vs percussive (keep as-is, already 0–1ish)
     tonal_vs_perc = _normalize(raw_features["harmonic_ratio"], 0.0, 1.0)
 
+    # Transient vs body brightness (piano: bright at hit, duller in tail)
+    transient_centroid = raw_features.get("transient_centroid", raw_features["spectral_centroid"])
+    body_centroid = raw_features.get("body_centroid", raw_features["spectral_centroid"])
+    transient_brightness = _normalize(transient_centroid, 200.0, sr / 2.0)
+    body_brightness = _normalize(body_centroid, 200.0, sr / 2.0)
+
+    # Sound class from detection: drives which Vital blocks are on/off and timbre
+    sound_class = _classify_sound(
+        attack_speed=attack_speed,
+        sustain_amount=sustain_amount,
+        tonal_vs_perc=tonal_vs_perc,
+        noisiness=noisiness,
+        harmonic_richness=harmonic_richness,
+        brightness=brightness,
+    )
+
     return {
         # Core “EQ / spectrum” features
         "brightness": brightness,
         "noisiness": noisiness,
         "tonal_vs_perc": tonal_vs_perc,
+
+        "transient_brightness": transient_brightness,
+        "body_brightness": body_brightness,
+        "sound_class": sound_class,
 
         # Envelope / dynamics (classification)
         "attack_speed": attack_speed,
@@ -74,3 +94,32 @@ def build_feature_vector(raw_features: dict) -> dict:
         # Pitch (kept in Hz for now)
         "fundamental_freq": float(raw_features["fundamental_freq"]),
     }
+
+
+def _classify_sound(
+    attack_speed: float,
+    sustain_amount: float,
+    tonal_vs_perc: float,
+    noisiness: float,
+    harmonic_richness: float,
+    brightness: float,
+) -> str:
+    """
+    Classify into piano_pluck, pad, pluck, lead, or standard from analyzed features.
+    Used by rules to turn Vital blocks on/off and set timbre.
+    """
+    if (
+        attack_speed >= 0.65
+        and sustain_amount <= 0.4
+        and tonal_vs_perc >= 0.72
+        and noisiness <= 0.42
+        and harmonic_richness >= 0.2
+    ):
+        return "piano_pluck"
+    if attack_speed <= 0.45 and sustain_amount >= 0.55:
+        return "pad"
+    if attack_speed >= 0.6 and sustain_amount <= 0.45:
+        return "pluck"
+    if 0.35 <= attack_speed <= 0.75 and sustain_amount >= 0.3 and brightness >= 0.45 and harmonic_richness >= 0.4:
+        return "lead"
+    return "standard"
