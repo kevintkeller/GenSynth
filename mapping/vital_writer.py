@@ -37,13 +37,12 @@ def _validate_preset_structure(data: dict) -> None:
 
 def export_vital_preset(preset_data: dict, output_path: str):
     """
-    Write a valid Vital preset to disk. Uses pretty-printed JSON (indent=2),
-    no BOM, no NaN/Inf. Validates structure after sanitizing.
+    Write a valid Vital preset to disk. Uses single-line JSON (no indent) to match
+    how Vital exports presets; pretty-printed output can cause Vital to fail loading.
     """
     safe = _sanitize_for_json(preset_data)
     _validate_preset_structure(safe)
     with open(output_path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(safe, f, indent=2, ensure_ascii=False, allow_nan=False)
-    # Round-trip check: ensure file is loadable
+        json.dump(safe, f, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     with open(output_path, "r", encoding="utf-8") as f:
         json.load(f)
