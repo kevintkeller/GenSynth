@@ -8,6 +8,25 @@ import re
 SANITIZE_MIN = -1000.0
 SANITIZE_MAX = 1000.0
 
+# Per-param ranges so we never write values that crash Vital (e.g. EQ cutoffs are 0-100 in preset).
+# Template uses ~0-100 for many cutoffs; writing 893/1000 caused crashes.
+PATCH_SAFE_RANGES = {
+    "eq_low_cutoff": (0.0, 100.0),
+    "eq_high_cutoff": (0.0, 100.0),
+    "eq_band_cutoff": (0.0, 100.0),
+    "filter_1_cutoff": (0.0, 100.0),
+    "filter_2_cutoff": (0.0, 100.0),
+    "distortion_filter_cutoff": (0.0, 100.0),
+    "chorus_cutoff": (0.0, 100.0),
+    "delay_filter_cutoff": (0.0, 100.0),
+    "reverb_pre_low_cutoff": (0.0, 100.0),
+    "reverb_pre_high_cutoff": (0.0, 100.0),
+    "chorus_voices": (1, 16),
+    "osc_1_unison_voices": (1, 16),
+    "osc_2_unison_voices": (1, 16),
+    "osc_3_unison_voices": (1, 16),
+}
+
 
 def _sanitize_for_json(obj):
     """Recursively replace NaN/Inf and clamp numbers. Preserve dict/list structure."""
