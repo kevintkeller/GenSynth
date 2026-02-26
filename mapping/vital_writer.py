@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 import re
 
 # Clamp to range Vital/doc expect (e.g. envelope 0-32s) so the plugin never chokes.
@@ -26,6 +27,28 @@ PATCH_SAFE_RANGES = {
     "osc_2_unison_voices": (1, 16),
     "osc_3_unison_voices": (1, 16),
 }
+
+# When PATCH_CORE_ONLY=1, only these params are patched (no FX). Use to avoid Vital crash from effect params.
+PATCH_CORE_ONLY_PARAMS = frozenset(
+    k for k in (
+        "osc_1_on", "osc_1_wave_frame", "osc_1_unison_voices", "osc_1_unison_detune",
+        "osc_1_transpose", "osc_1_tune", "osc_1_level",
+        "env_1_delay", "env_1_hold", "env_1_attack", "env_1_attack_power",
+        "env_1_decay", "env_1_decay_power", "env_1_sustain", "env_1_release", "env_1_release_power",
+        "filter_1_on", "filter_1_cutoff", "filter_1_resonance", "filter_1_mix",
+        "osc_2_on", "osc_2_level", "osc_2_wave_frame", "osc_2_unison_voices", "osc_2_unison_detune",
+        "osc_2_transpose", "osc_2_tune",
+        "osc_3_on", "osc_3_level", "osc_3_wave_frame", "osc_3_unison_voices", "osc_3_unison_detune",
+        "osc_3_transpose", "osc_3_tune",
+        "sample_on", "sample_level", "sample_transpose", "sample_tune",
+        "env_2_delay", "env_2_hold", "env_2_attack", "env_2_attack_power",
+        "env_2_decay", "env_2_decay_power", "env_2_sustain", "env_2_release", "env_2_release_power",
+        "env_3_delay", "env_3_hold", "env_3_attack", "env_3_decay", "env_3_sustain", "env_3_release",
+        "env_4_delay", "env_4_hold", "env_4_attack", "env_4_decay", "env_4_sustain", "env_4_release",
+        "lfo_1_frequency", "lfo_2_frequency", "lfo_3_frequency", "lfo_4_frequency",
+        "filter_2_on", "filter_2_cutoff", "filter_2_resonance", "filter_2_mix",
+    )
+)
 
 
 def _sanitize_for_json(obj):
@@ -107,9 +130,13 @@ def export_vital_preset(preset_data: dict, output_path: str, template_path: str 
     from mapping.vital_params import CONTROLLED_PARAMS
 
     if template_path:
+        # Default to core-only (no FX params) so Vital doesn't crash; set PATCH_CORE_ONLY=0 to patch all params.
+        core_only = os.environ.get("PATCH_CORE_ONLY", "1").strip().lower() in ("1", "true", "yes")
         updates = {}
         settings = preset_data["settings"]
         for k in CONTROLLED_PARAMS:
+            if core_only and k not in PATCH_CORE_ONLY_PARAMS:
+                continue
             if k not in settings:
                 continue
             v = settings[k]

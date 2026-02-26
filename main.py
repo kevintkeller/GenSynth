@@ -1,5 +1,7 @@
 # main.py
 
+import os
+
 from analysis.audio_analysis import analyze_audio
 from analysis.feature_vector import build_feature_vector
 from mapping.rules_engine import build_vital_parameters
@@ -25,7 +27,8 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
     print("Applying parameters...")
     final_preset = apply_parameters(template, vital_params)
 
-    print("Exporting preset (patch mode so Vital can open it)...")
+    core_only = os.environ.get("PATCH_CORE_ONLY", "1").strip().lower() in ("1", "true", "yes")
+    print("Exporting preset (patch mode, core params only, no FX)..." if core_only else "Exporting preset (patch mode)...")
     export_vital_preset(final_preset, output_preset_path, template_path=template_path)
 
     print("Done! Preset saved.")

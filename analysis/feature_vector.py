@@ -27,10 +27,11 @@ def build_feature_vector(raw_features: dict) -> dict:
     sustain_level = float(np.clip(raw_features.get("sustain_ratio", 0.5), 0.0, 1.0))
     release_sec = float(np.clip(raw_features.get("release_time", 0.3), 0.02, 4.0))
 
-    # For percussive/pluck sounds, cap decay and release so single-note envelope is accurate
+    # For percussive/pluck sounds, cap decay/release and lower sustain floor so envelope is punchy
     if attack_speed > 0.6 and sustain_amount < 0.4:
         decay_sec = min(decay_sec, 0.7)
         release_sec = min(release_sec, 1.2)
+        sustain_level = min(sustain_level, 0.22)  # piano/pluck: low sustain floor
 
     # Harmonic timbre (0-1): odd vs even balance, and richness
     harmonic_odd_ratio = float(np.clip(raw_features.get("harmonic_odd_ratio", 0.5), 0.0, 1.0))

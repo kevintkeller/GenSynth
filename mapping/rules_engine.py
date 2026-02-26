@@ -69,15 +69,15 @@ RULES_CONFIG = {
         "release_power": -0.5,
     },
     "envelope_global": {
-        "min_attack": 0.003,
+        "min_attack": 0.002,
         "min_release": 0.05,
         "max_attack": 4.0,
         "max_decay": 4.0,
         "max_release": 4.0,
         "delay": 0.0,
         "hold": 0.002,
-        "attack_power": -0.2,
-        "decay_power": -0.3,
+        "attack_power": -0.25,
+        "decay_power": -0.35,
         "release_power": -0.5,
     },
     # Oscillator: wavetable frame (Vital: low=sine, mid=triangle/round, high=saw)
@@ -88,7 +88,7 @@ RULES_CONFIG = {
         "unison_detune_scale": 0.35,
         "level": 1.0,
     },
-    # Acoustic-like (piano, etc.): warm timbre, gentle filter, no pitch shift
+    # Acoustic-like (piano, etc.): warm but clear timbre, gentle filter, no pitch shift
     "acoustic_like": {
         "tonal_vs_perc_min": 0.8,
         "noisiness_max": 0.35,
@@ -97,10 +97,14 @@ RULES_CONFIG = {
         "chorus_dry_wet_movement_scale": 0.15,
         "distortion_drive_min": 5.0,
         "distortion_drive_brightness_scale": 20.0,
-        "wave_frame_min": 12.0,
-        "wave_frame_max": 55.0,
-        "filter_cutoff_min": 32.0,
-        "filter_cutoff_max": 72.0,
+        "wave_frame_min": 18.0,
+        "wave_frame_max": 52.0,
+        "filter_cutoff_min": 38.0,
+        "filter_cutoff_max": 78.0,
+        "env_sustain_max": 0.15,
+        "env_attack_max": 0.012,
+        "env_release_min": 0.35,
+        "env_release_max": 1.0,
     },
     # Filter (Vital filter_1_cutoff ~0–120 Hz-style units)
     "filter": {
@@ -461,10 +465,20 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
         return
     params["osc_1_unison_voices"] = 1.0
     params["osc_1_unison_detune"] = features["brightness"] * ac["unison_detune_scale"]
+    params["osc_1_level"] = 1.0
     b = features["brightness"]
     params["osc_1_wave_frame"] = ac["wave_frame_min"] + b * (ac["wave_frame_max"] - ac["wave_frame_min"])
     params["filter_1_cutoff"] = ac["filter_cutoff_min"] + b * (ac["filter_cutoff_max"] - ac["filter_cutoff_min"])
-    params["filter_1_resonance"] = 0.15 + 0.25 * b
+    params["filter_1_resonance"] = 0.1 + 0.18 * b  # less ring for more natural piano
+    # Piano-like envelope: snappy attack, low sustain, natural release
+    params["env_1_attack"] = min(ac.get("env_attack_max", 0.02), params.get("env_1_attack", 0.01))
+    params["env_1_sustain"] = min(ac.get("env_sustain_max", 0.2), params.get("env_1_sustain", 0.1))
+    r = params.get("env_1_release", 0.4)
+    params["env_1_release"] = max(ac.get("env_release_min", 0.3), min(ac.get("env_release_max", 1.2), r))
+    # Keep env 2 in sync for consistency
+    params["env_2_attack"] = params["env_1_attack"]
+    params["env_2_sustain"] = params["env_1_sustain"]
+    params["env_2_release"] = params["env_1_release"]
     # Gentle effects chain for acoustic (piano, etc.)
     params["chorus_dry_wet"] = ac["chorus_dry_wet_min"] + features["movement"] * ac["chorus_dry_wet_movement_scale"]
     params["chorus_mod_depth"] = min(params.get("chorus_mod_depth", 0.5) * 0.4, 0.3)
