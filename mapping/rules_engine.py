@@ -239,6 +239,112 @@ def _lfo_params(features: dict, config: dict) -> dict:
     return {"lfo_1_frequency": freq}
 
 
+def _osc2_osc3_params(features: dict, config: dict) -> dict:
+    """OSC 2 and OSC 3: optional layers from richness/brightness (sub or detuned body)."""
+    brightness = features["brightness"]
+    richness = features.get("harmonic_richness", 0.5)
+    # OSC 2: turn on for richer sounds as a subtle second layer (slightly different wave, lower level)
+    osc2_on = 1.0 if richness > 0.4 and brightness > 0.25 else 0.0
+    # OSC 3: turn on for very rich/bright (e.g. pads, leads)
+    osc3_on = 1.0 if richness > 0.6 and brightness > 0.5 else 0.0
+    oc = config["osc"]
+    # OSC 2: slightly offset wave frame and lower level for thickness
+    osc2_frame = min(oc["wave_frame_max"], 20.0 + brightness * 80.0) if osc2_on else 0.0
+    osc3_frame = min(oc["wave_frame_max"], 40.0 + brightness * 100.0) if osc3_on else 0.0
+    return {
+        "osc_2_on": osc2_on,
+        "osc_2_level": 0.35 + 0.25 * brightness if osc2_on else 0.0,
+        "osc_2_wave_frame": osc2_frame,
+        "osc_2_unison_voices": 1.0,
+        "osc_2_unison_detune": 0.01 * brightness,
+        "osc_2_transpose": 0.0,
+        "osc_2_tune": 0.0,
+        "osc_3_on": osc3_on,
+        "osc_3_level": 0.25 + 0.2 * brightness if osc3_on else 0.0,
+        "osc_3_wave_frame": osc3_frame,
+        "osc_3_unison_voices": 1.0,
+        "osc_3_unison_detune": 0.01 * brightness,
+        "osc_3_transpose": 0.0,
+        "osc_3_tune": 0.0,
+    }
+
+
+def _sample_params(features: dict, config: dict) -> dict:
+    """Sampler (SMP): off by default (no sample content); level/transpose/tune for when used."""
+    return {
+        "sample_on": 0.0,
+        "sample_level": 0.5,
+        "sample_transpose": 0.0,
+        "sample_tune": 0.0,
+    }
+
+
+def _env2_env3_env4_params(features: dict, config: dict) -> dict:
+    """ENV 2, 3, 4: filter/modulation envelopes from same analyzed envelope or variants."""
+    g = config["envelope_global"]
+    attack_sec = float(features.get("attack_sec", 0.01))
+    decay_sec = float(features.get("decay_sec", 0.2))
+    sustain_level = float(features.get("sustain_level", 0.3))
+    release_sec = float(features.get("release_sec", 0.25))
+    attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
+    decay = max(0.01, min(g["max_decay"], decay_sec))
+    release = max(g["min_release"], min(g["max_release"], release_sec))
+    sustain = max(0.0, min(1.0, sustain_level))
+    # ENV 2: same shape as ENV 1 (for filter modulation routing in Vital)
+    # ENV 3: faster attack/decay for mod
+    # ENV 4: slower, more sustain for pads
+    return {
+        "env_2_delay": 0.0,
+        "env_2_hold": 0.002,
+        "env_2_attack": attack,
+        "env_2_attack_power": -0.2,
+        "env_2_decay": decay,
+        "env_2_decay_power": -0.3,
+        "env_2_sustain": sustain,
+        "env_2_release": release,
+        "env_2_release_power": -0.5,
+        "env_3_delay": 0.0,
+        "env_3_hold": 0.0,
+        "env_3_attack": max(0.005, attack * 0.5),
+        "env_3_decay": max(0.01, decay * 0.3),
+        "env_3_sustain": 0.0,
+        "env_3_release": max(0.05, release * 0.4),
+        "env_4_delay": 0.0,
+        "env_4_hold": 0.01,
+        "env_4_attack": min(1.0, attack * 2.0),
+        "env_4_decay": min(2.0, decay * 1.5),
+        "env_4_sustain": min(0.8, sustain + 0.2),
+        "env_4_release": min(2.0, release * 1.2),
+    }
+
+
+def _lfo2_lfo3_lfo4_params(features: dict, config: dict) -> dict:
+    """LFO 2, 3, 4: rates from movement for modulation variety."""
+    movement = features["movement"]
+    lc = config["lfo"]
+    base = lc["freq_min"] + movement * lc["freq_range"]
+    return {
+        "lfo_2_frequency": base * 0.5,
+        "lfo_3_frequency": base * 0.3 + 0.5,
+        "lfo_4_frequency": base * 0.25 + 0.3,
+    }
+
+
+def _filter2_params(features: dict, config: dict) -> dict:
+    """Filter 2: optional second filter (e.g. serial) from brightness."""
+    brightness = features["brightness"]
+    # Turn on for brighter sounds to add extra tone shaping
+    f2_on = 1.0 if brightness > 0.5 else 0.0
+    fc = config["filter"]
+    cutoff = fc["cutoff_min"] + 30.0 + brightness * 50.0 if f2_on else 80.0
+    return {
+        "filter_2_on": f2_on,
+        "filter_2_cutoff": cutoff,
+        "filter_2_resonance": 0.1 + 0.2 * brightness if f2_on else 0.1,
+        "filter_2_mix": 0.7 if f2_on else 0.0,
+    }
+
+
 def _pitch_params(features: dict, config: dict) -> dict:
     """Map fundamental_freq to osc_1_transpose (semitones) and osc_1_tune (fine -1..1)."""
     f0 = features.get("fundamental_freq") or 0.0
@@ -372,6 +478,10 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
     params["compressor_mix"] = min(0.65, params.get("compressor_mix", 0.8))
     params["eq_low_gain"] = max(-6.0, min(3.0, params.get("eq_low_gain", 0)))
     params["eq_high_gain"] = max(-3.0, min(5.0, params.get("eq_high_gain", 0)))
+    # Acoustic: single osc, no second filter
+    params["osc_2_on"] = 0.0
+    params["osc_3_on"] = 0.0
+    params["filter_2_on"] = 0.0
     params.pop("osc_1_transpose", None)
     params.pop("osc_1_tune", None)
 
@@ -387,8 +497,13 @@ def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dic
     params = {}
     params.update(_env_params(features, cfg))
     params.update(_osc_params(features, cfg))
+    params.update(_osc2_osc3_params(features, cfg))
+    params.update(_sample_params(features, cfg))
+    params.update(_env2_env3_env4_params(features, cfg))
     params.update(_filter_params(features, cfg))
+    params.update(_filter2_params(features, cfg))
     params.update(_lfo_params(features, cfg))
+    params.update(_lfo2_lfo3_lfo4_params(features, cfg))
     params.update(_fx_params(features, cfg))
 
     params.update(_pitch_params(features, cfg))
