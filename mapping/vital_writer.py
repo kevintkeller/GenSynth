@@ -50,8 +50,7 @@ PATCH_CORE_ONLY_PARAMS = frozenset(
     )
 )
 
-# When core-only, also patch these to turn effects off so preset matches dry input (e.g. piano).
-# Only on/off and mix/dry_wet; safe 0/1 and 0.0 so Vital won't crash.
+# When core-only, patch these to turn effects off for piano/pluck/bass so preset is dry.
 PATCH_FX_OFF_WHEN_CORE_ONLY = {
     "distortion_on": 0,
     "distortion_mix": 0.0,
@@ -68,6 +67,21 @@ PATCH_FX_OFF_WHEN_CORE_ONLY = {
     "flanger_on": 0,
     "flanger_dry_wet": 0.0,
     "eq_on": 0,
+}
+
+# When sound_class is pad or lead, we patch these FX from rules (not force-off). Safe ranges only.
+PATCH_FX_FOR_PAD_LEAD = frozenset([
+    "reverb_on", "reverb_dry_wet", "reverb_decay_time", "reverb_size",
+    "delay_on", "delay_dry_wet", "delay_feedback", "delay_filter_cutoff", "delay_frequency",
+    "chorus_on", "chorus_dry_wet", "chorus_feedback", "chorus_mod_depth", "chorus_cutoff", "chorus_spread", "chorus_voices",
+    "compressor_on", "compressor_mix", "compressor_attack", "compressor_release",
+])
+# Safe 0-1 for wet/mix; reverb_decay 0-1.5; reverb_size 0-1; delay_feedback 0-0.9
+FX_SAFE_RANGES = {
+    "reverb_dry_wet": (0.0, 1.0), "reverb_decay_time": (0.0, 1.5), "reverb_size": (0.0, 1.0),
+    "delay_dry_wet": (0.0, 1.0), "delay_feedback": (0.0, 0.85),
+    "chorus_dry_wet": (0.0, 1.0), "chorus_feedback": (0.0, 1.0), "chorus_mod_depth": (0.0, 1.0),
+    "compressor_mix": (0.0, 1.0),
 }
 
 
@@ -172,7 +186,26 @@ def export_vital_preset(preset_data: dict, output_path: str, template_path: str 
                 v = max(SANITIZE_MIN, min(SANITIZE_MAX, v))
             updates[k] = v
         if core_only:
-            updates.update(PATCH_FX_OFF_WHEN_CORE_ONLY)
+            sound_class = preset_data.get("_sound_class", "standard")
+            if sound_class in ("pad", "lead"):
+                for k in PATCH_FX_FOR_PAD_LEAD:
+                    if k not in settings or k in updates:
+                        continue
+                    v = settings[k]
+                    if not isinstance(v, (int, float)) or not math.isfinite(v):
+                        continue
+                    v = float(v)
+                    if k in FX_SAFE_RANGES:
+                        lo, hi = FX_SAFE_RANGES[k]
+                        v = max(lo, min(hi, v))
+                    elif k in PATCH_SAFE_RANGES:
+                        lo, hi = PATCH_SAFE_RANGES[k]
+                        v = max(lo, min(hi, v))
+                    else:
+                        v = max(0.0, min(1.0, v)) if "dry_wet" in k or "mix" in k or "feedback" in k else max(SANITIZE_MIN, min(SANITIZE_MAX, v))
+                    updates[k] = v
+            else:
+                updates.update(PATCH_FX_OFF_WHEN_CORE_ONLY)
         export_vital_preset_by_patch(template_path, updates, output_path)
         return
     safe = _sanitize_for_json(preset_data)

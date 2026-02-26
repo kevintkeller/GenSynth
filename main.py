@@ -26,9 +26,16 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
 
     print("Applying parameters...")
     final_preset = apply_parameters(template, vital_params)
+    final_preset["_sound_class"] = features.get("sound_class", "standard")
 
     core_only = os.environ.get("PATCH_CORE_ONLY", "1").strip().lower() in ("1", "true", "yes")
-    print("Exporting preset (patch mode, core params only, no FX)..." if core_only else "Exporting preset (patch mode)...")
+    sc = final_preset.get("_sound_class", "standard")
+    if core_only and sc in ("pad", "lead"):
+        print("Exporting preset (patch mode, core + FX for pad/lead)...")
+    elif core_only:
+        print("Exporting preset (patch mode, core params only, no FX)...")
+    else:
+        print("Exporting preset (patch mode)...")
     export_vital_preset(final_preset, output_preset_path, template_path=template_path)
 
     print("Done! Preset saved.")
@@ -37,5 +44,5 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
 if __name__ == "__main__":
     generate_from_audio(
         "test-piano.wav",         # your audio file
-        "generated-piano-2.vital"    # output preset
+        "generated-piano-3.vital"    # output preset
     )

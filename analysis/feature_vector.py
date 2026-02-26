@@ -55,6 +55,7 @@ def build_feature_vector(raw_features: dict) -> dict:
     body_brightness = _normalize(body_centroid, 200.0, sr / 2.0)
 
     # Sound class from detection: drives which Vital blocks are on/off and timbre
+    fundamental_freq = float(raw_features["fundamental_freq"])
     sound_class = _classify_sound(
         attack_speed=attack_speed,
         sustain_amount=sustain_amount,
@@ -62,6 +63,7 @@ def build_feature_vector(raw_features: dict) -> dict:
         noisiness=noisiness,
         harmonic_richness=harmonic_richness,
         brightness=brightness,
+        fundamental_freq=fundamental_freq,
     )
 
     return {
@@ -103,22 +105,29 @@ def _classify_sound(
     noisiness: float,
     harmonic_richness: float,
     brightness: float,
+    fundamental_freq: float = 440.0,
 ) -> str:
     """
-    Classify into piano_pluck, pad, pluck, lead, or standard from analyzed features.
-    Used by rules to turn Vital blocks on/off and set timbre.
+    Classify into piano_pluck, bass_pluck, pad, pluck, lead, or standard from analyzed features.
+    Used by rules to turn Vital blocks on/off and set timbre. Bass = low f0 gets OSC 2 + Filter 2.
     """
+    is_plucky = attack_speed >= 0.6 and sustain_amount <= 0.45
+    is_bass_range = fundamental_freq > 0 and fundamental_freq < 220.0  # ~A2 and below
+
     if (
         attack_speed >= 0.65
         and sustain_amount <= 0.4
         and tonal_vs_perc >= 0.72
         and noisiness <= 0.42
         and harmonic_richness >= 0.2
+        and not is_bass_range
     ):
         return "piano_pluck"
+    if is_bass_range and is_plucky:
+        return "bass_pluck"
     if attack_speed <= 0.45 and sustain_amount >= 0.55:
         return "pad"
-    if attack_speed >= 0.6 and sustain_amount <= 0.45:
+    if is_plucky:
         return "pluck"
     if 0.35 <= attack_speed <= 0.75 and sustain_amount >= 0.3 and brightness >= 0.45 and harmonic_richness >= 0.4:
         return "lead"

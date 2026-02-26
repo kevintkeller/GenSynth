@@ -88,27 +88,30 @@ RULES_CONFIG = {
         "unison_detune_scale": 0.35,
         "level": 1.0,
     },
-    # Piano/acoustic-like: triangle-zone wave (odd harmonics), filter from transient brightness
+    # Piano/acoustic-like: clearer wave (more harmonics), open filter so not muffled
     "acoustic_like": {
         "unison_detune_scale": 0.05,
         "chorus_dry_wet_min": 0.05,
         "chorus_dry_wet_movement_scale": 0.15,
         "distortion_drive_min": 5.0,
         "distortion_drive_brightness_scale": 20.0,
-        "wave_frame_min": 28.0,
-        "wave_frame_max": 42.0,
-        "filter_cutoff_min": 42.0,
-        "filter_cutoff_max": 82.0,
+        "wave_frame_min": 32.0,
+        "wave_frame_max": 52.0,
+        "filter_cutoff_min": 58.0,
+        "filter_cutoff_max": 95.0,
+        "filter_cutoff_floor": 62.0,
         "env_sustain_max": 0.15,
         "env_attack_max": 0.012,
         "env_release_min": 0.35,
         "env_release_max": 1.0,
     },
     # Per sound_class: turn Vital blocks on/off (see _sound_class_overrides)
+    # Only piano_pluck stays minimal (1 osc, 1 filter). Others get OSC 2 and/or Filter 2 so presets vary.
     "sound_class": {
         "piano_pluck": {"osc_2": False, "osc_3": False, "filter_2": False, "lfo": False, "unison": 1},
+        "bass_pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1},
         "pad": {"osc_2": True, "osc_3": True, "filter_2": True, "lfo": True, "unison": 2},
-        "pluck": {"osc_2": False, "osc_3": False, "filter_2": False, "lfo": False, "unison": 1},
+        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1},
         "lead": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 2},
         "standard": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1},
     },
@@ -472,9 +475,10 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
     params["osc_1_wave_frame"] = ac["wave_frame_min"] + b * (ac["wave_frame_max"] - ac["wave_frame_min"])
     transient_b = features.get("transient_brightness", b)
     body_b = features.get("body_brightness", b * 0.7)
-    cutoff_t = 0.65 * transient_b + 0.35 * body_b
-    params["filter_1_cutoff"] = ac["filter_cutoff_min"] + cutoff_t * (ac["filter_cutoff_max"] - ac["filter_cutoff_min"])
-    params["filter_1_resonance"] = 0.08 + 0.12 * b
+    cutoff_t = 0.8 * transient_b + 0.2 * body_b
+    raw_cutoff = ac["filter_cutoff_min"] + cutoff_t * (ac["filter_cutoff_max"] - ac["filter_cutoff_min"])
+    params["filter_1_cutoff"] = max(ac.get("filter_cutoff_floor", 50), raw_cutoff)
+    params["filter_1_resonance"] = 0.06 + 0.1 * b
     # Piano-like envelope: snappy attack, low sustain, natural release
     params["env_1_attack"] = min(ac.get("env_attack_max", 0.02), params.get("env_1_attack", 0.01))
     params["env_1_sustain"] = min(ac.get("env_sustain_max", 0.2), params.get("env_1_sustain", 0.1))
@@ -500,6 +504,8 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
     params["eq_high_gain"] = max(-3.0, min(5.0, params.get("eq_high_gain", 0)))
     # Acoustic: single osc, no second filter, no LFO modulation (dry = like input)
     params["osc_2_on"] = 0.0
+    params["osc_2_level"] = 0.0
+    params["osc_2_wave_frame"] = 5.0
     params["osc_3_on"] = 0.0
     params["filter_2_on"] = 0.0
     params["lfo_1_frequency"] = 0.0
@@ -511,7 +517,7 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
 
 
 def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
-    """In-place: turn Vital blocks on/off from detected sound_class (piano_pluck, pad, pluck, lead, standard)."""
+    """In-place: turn Vital blocks on/off from detected sound_class. Force on when config says True so presets vary."""
     sc = features.get("sound_class", "standard")
     sc_config = config.get("sound_class", {}).get(sc)
     if not sc_config:
@@ -519,12 +525,21 @@ def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
     if sc_config.get("osc_2") is False:
         params["osc_2_on"] = 0.0
         params["osc_2_level"] = 0.0
+    elif sc_config.get("osc_2") is True:
+        params["osc_2_on"] = 1.0
+        params["osc_2_level"] = max(params.get("osc_2_level", 0), 0.35)
     if sc_config.get("osc_3") is False:
         params["osc_3_on"] = 0.0
         params["osc_3_level"] = 0.0
+    elif sc_config.get("osc_3") is True:
+        params["osc_3_on"] = 1.0
+        params["osc_3_level"] = max(params.get("osc_3_level", 0), 0.25)
     if sc_config.get("filter_2") is False:
         params["filter_2_on"] = 0.0
         params["filter_2_mix"] = 0.0
+    elif sc_config.get("filter_2") is True:
+        params["filter_2_on"] = 1.0
+        params["filter_2_mix"] = max(params.get("filter_2_mix", 0), 0.5)
     if sc_config.get("lfo") is False:
         params["lfo_1_frequency"] = 0.0
         params["lfo_2_frequency"] = 0.0
@@ -533,6 +548,11 @@ def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
     unison = sc_config.get("unison")
     if unison is not None:
         params["osc_1_unison_voices"] = float(unison)
+
+    if sc == "bass_pluck":
+        params["osc_2_transpose"] = -12.0
+        params["osc_2_wave_frame"] = 8.0
+        params["osc_2_level"] = 0.5
 
 
 def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dict:
