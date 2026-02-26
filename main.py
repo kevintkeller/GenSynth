@@ -19,7 +19,7 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
     vital_params = build_vital_parameters(features)
 
     print("Loading Vital template...")
-    template = load_template()
+    template = load_template()  # uses vital_templates/Presets/blank-template.vital or TEMPLATE.vital if present
 
     print("Applying parameters...")
     final_preset = apply_parameters(template, vital_params)
@@ -33,5 +33,5 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
 if __name__ == "__main__":
     generate_from_audio(
         "test-piano.wav",         # your audio file
-        "generated-piano-5.vital"    # output preset
+        "generated-piano-2.vital"    # output preset
     )
