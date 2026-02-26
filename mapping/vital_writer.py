@@ -115,7 +115,14 @@ def export_vital_preset(preset_data: dict, output_path: str, template_path: str 
             v = settings[k]
             if not isinstance(v, (int, float)) or not math.isfinite(v):
                 continue
-            v = max(SANITIZE_MIN, min(SANITIZE_MAX, v)) if isinstance(v, float) else v
+            v = float(v) if isinstance(v, (int, float)) else v
+            if k in PATCH_SAFE_RANGES:
+                lo, hi = PATCH_SAFE_RANGES[k]
+                v = max(lo, min(hi, v))
+                if isinstance(lo, int) and isinstance(hi, int):
+                    v = int(round(v))
+            else:
+                v = max(SANITIZE_MIN, min(SANITIZE_MAX, v))
             updates[k] = v
         export_vital_preset_by_patch(template_path, updates, output_path)
         return
