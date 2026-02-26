@@ -69,7 +69,15 @@ RULES_CONFIG = {
     },
     "envelope_global": {
         "min_attack": 0.003,
-        "min_release": 0.15,
+        "min_release": 0.05,
+        "max_attack": 4.0,
+        "max_decay": 4.0,
+        "max_release": 4.0,
+        "delay": 0.0,
+        "hold": 0.002,
+        "attack_power": -0.2,
+        "decay_power": -0.3,
+        "release_power": -0.5,
     },
     # Oscillator: wavetable frame 0 = sine, higher = brighter (Vital ~0–255)
     "osc": {
@@ -130,62 +138,33 @@ def _classify_envelope(features: dict, config: dict) -> str:
     return "standard"
 
 
-def _env_params(env_class: str, features: dict, config: dict) -> dict:
-    """Build envelope 1 parameters (delay, hold, attack, decay, sustain, release + powers)."""
-    global_c = config["envelope_global"]
-    min_attack = global_c["min_attack"]
-    min_release = global_c["min_release"]
-    sustain = features["sustain_amount"]
-    attack_speed = features["attack_speed"]
+def _env_params(features: dict, config: dict) -> dict:
+    """
+    Build envelope 1 from analyzed audio: direct mapping of measured attack/decay/sustain/release
+    so the Vital envelope matches the source sound for any input.
+    """
+    g = config["envelope_global"]
+    # Use measured envelope (seconds and 0-1 level); fallbacks for older feature vectors
+    attack_sec = float(features.get("attack_sec", 0.01))
+    decay_sec = float(features.get("decay_sec", 0.2))
+    sustain_level = float(features.get("sustain_level", 0.3))
+    release_sec = float(features.get("release_sec", 0.25))
 
-    if env_class == "pluck":
-        c = config["envelope_pluck"]
-        return {
-            "env_1_delay": c["delay"],
-            "env_1_hold": c["hold"],
-            "env_1_attack": max(min_attack, c["attack"]),
-            "env_1_attack_power": c["attack_power"],
-            "env_1_decay": c["decay"],
-            "env_1_decay_power": c["decay_power"],
-            "env_1_sustain": c["sustain"],
-            "env_1_release": max(min_release, c["release"]),
-            "env_1_release_power": c["release_power"],
-        }
-    if env_class == "pad":
-        c = config["envelope_pad"]
-        hold = c["hold_min"] + c["hold_max_extra"] * sustain
-        attack = max(min_attack, c["attack_min"] + (1.0 - attack_speed) * c["attack_max_extra"])
-        decay = c["decay_min"] + sustain * c["decay_extra"]
-        sustain_val = c["sustain_min"] + c["sustain_extra"] * sustain
-        release = max(min_release, c["release_min"] + sustain * c["release_extra"])
-        return {
-            "env_1_delay": c["delay"],
-            "env_1_hold": hold,
-            "env_1_attack": attack,
-            "env_1_attack_power": c["attack_power"],
-            "env_1_decay": decay,
-            "env_1_decay_power": c["decay_power"],
-            "env_1_sustain": sustain_val,
-            "env_1_release": release,
-            "env_1_release_power": c["release_power"],
-        }
-    # standard
-    c = config["envelope_standard"]
-    hold = c["hold_min"] + c["hold_extra"] * sustain
-    attack = max(min_attack, c["attack_min"] + (1.0 - attack_speed) * c["attack_extra"])
-    decay = c["decay_min"] + (1.0 - sustain) * c["decay_extra"]
-    sustain_val = c["sustain_min"] + c["sustain_extra"] * sustain
-    release = max(min_release, c["release_min"] + sustain * c["release_extra"])
+    attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
+    decay = max(0.01, min(g["max_decay"], decay_sec))
+    release = max(g["min_release"], min(g["max_release"], release_sec))
+    sustain = max(0.0, min(1.0, sustain_level))
+
     return {
-        "env_1_delay": c["delay"],
-        "env_1_hold": hold,
+        "env_1_delay": g["delay"],
+        "env_1_hold": g["hold"],
         "env_1_attack": attack,
-        "env_1_attack_power": c["attack_power"],
+        "env_1_attack_power": g["attack_power"],
         "env_1_decay": decay,
-        "env_1_decay_power": c["decay_power"],
-        "env_1_sustain": sustain_val,
+        "env_1_decay_power": g["decay_power"],
+        "env_1_sustain": sustain,
         "env_1_release": release,
-        "env_1_release_power": c["release_power"],
+        "env_1_release_power": g["release_power"],
     }
 
 
@@ -298,9 +277,9 @@ def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dic
     """
     cfg = config if config is not None else RULES_CONFIG
 
-    env_class = _classify_envelope(features, cfg)
+    env_class = _classify_envelope(features, cfg)  # used only for acoustic_like overrides
     params = {}
-    params.update(_env_params(env_class, features, cfg))
+    params.update(_env_params(features, cfg))
     params.update(_osc_params(features, cfg))
     params.update(_filter_params(features, cfg))
     params.update(_lfo_params(features, cfg))
