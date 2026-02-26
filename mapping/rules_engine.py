@@ -79,14 +79,15 @@ RULES_CONFIG = {
         "decay_power": -0.3,
         "release_power": -0.5,
     },
-    # Oscillator: wavetable frame 0 = sine, higher = brighter (Vital ~0–255)
+    # Oscillator: wavetable frame (Vital: low=sine, mid=triangle/round, high=saw)
     "osc": {
         "wave_frame_max": 255.0,
+        "sine_zone_max": 35.0,
         "unison_voices_bright_threshold": 0.6,
         "unison_detune_scale": 0.35,
         "level": 1.0,
     },
-    # Acoustic-like override (piano, etc.): cleaner, less FX, no pitch shift
+    # Acoustic-like (piano, etc.): warm timbre, gentle filter, no pitch shift
     "acoustic_like": {
         "tonal_vs_perc_min": 0.8,
         "noisiness_max": 0.35,
@@ -95,6 +96,10 @@ RULES_CONFIG = {
         "chorus_dry_wet_movement_scale": 0.15,
         "distortion_drive_min": 5.0,
         "distortion_drive_brightness_scale": 20.0,
+        "wave_frame_min": 12.0,
+        "wave_frame_max": 55.0,
+        "filter_cutoff_min": 32.0,
+        "filter_cutoff_max": 72.0,
     },
     # Filter (Vital filter_1_cutoff ~0–120 Hz-style units)
     "filter": {
@@ -169,13 +174,20 @@ def _env_params(features: dict, config: dict) -> dict:
 
 
 def _osc_params(features: dict, config: dict) -> dict:
-    """Oscillator 1: wave frame, unison, level."""
+    """Oscillator 1: wave frame from brightness + harmonic character (odd/even, richness)."""
     brightness = features["brightness"]
     noisiness = features["noisiness"]
+    richness = features.get("harmonic_richness", 0.5)
+    odd_ratio = features.get("harmonic_odd_ratio", 0.5)
     oc = config["osc"]
-    # Wave frame: dark -> 0 (sine), bright -> max
-    base = brightness * (0.7 + 0.3 * noisiness)
-    wave_frame = float(base * oc["wave_frame_max"])
+    # Low richness -> sine zone (0–sine_zone_max); high richness -> full range by brightness + even-harmonic tilt
+    if richness < 0.25:
+        wave_frame = 5.0 + brightness * (oc["sine_zone_max"] - 5.0)
+    else:
+        # More even harmonics (low odd_ratio) = brighter/saw-ish; more odd = triangle/square
+        tilt = (1.0 - odd_ratio) * 0.4 + brightness * 0.6
+        wave_frame = oc["sine_zone_max"] + tilt * (oc["wave_frame_max"] - oc["sine_zone_max"])
+    wave_frame = float(max(0.0, min(oc["wave_frame_max"], wave_frame)))
     unison_voices = 4.0 if brightness > oc["unison_voices_bright_threshold"] else 1.0
     unison_detune = brightness * oc["unison_detune_scale"]
     return {
@@ -253,7 +265,7 @@ def _fx_params(features: dict, config: dict) -> dict:
 
 
 def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None:
-    """In-place: for very tonal, low-noise pluck-like sounds (e.g. piano), soften FX, unison, keep template pitch."""
+    """In-place: for very tonal, low-noise pluck-like sounds (e.g. piano), warm timbre, gentle filter, keep template pitch."""
     ac = config["acoustic_like"]
     if features["tonal_vs_perc"] < ac["tonal_vs_perc_min"]:
         return
@@ -263,8 +275,15 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
         return
     params["osc_1_unison_voices"] = 1.0
     params["osc_1_unison_detune"] = features["brightness"] * ac["unison_detune_scale"]
+    # Warm oscillator: keep in triangle/round zone (not harsh saw)
+    b = features["brightness"]
+    params["osc_1_wave_frame"] = ac["wave_frame_min"] + b * (ac["wave_frame_max"] - ac["wave_frame_min"])
+    # Warmer filter (piano body)
+    params["filter_1_cutoff"] = ac["filter_cutoff_min"] + b * (ac["filter_cutoff_max"] - ac["filter_cutoff_min"])
+    params["filter_1_resonance"] = 0.15 + 0.25 * b
     params["chorus_dry_wet"] = ac["chorus_dry_wet_min"] + features["movement"] * ac["chorus_dry_wet_movement_scale"]
     params["distortion_drive"] = ac["distortion_drive_min"] + features["brightness"] * ac["distortion_drive_brightness_scale"]
+    params["reverb_dry_wet"] = min(0.25, params.get("reverb_dry_wet", 0.3))
     # Keep template pitch (don't force bass from low-note analysis)
     params.pop("osc_1_transpose", None)
     params.pop("osc_1_tune", None)

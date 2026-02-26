@@ -92,6 +92,39 @@ def analyze_audio(file_path: str) -> dict:
     # Zero crossing rate (helps with noisiness/brightness)
     zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
 
+    # Harmonic character: odd vs even harmonic balance, and harmonic richness
+    # Use spectrum around the transient (peak) for timbre
+    n_fft = 2048
+    frame_start = max(0, peak_index * hop_length - n_fft // 2)
+    frame = y[frame_start:frame_start + n_fft]
+    if len(frame) < n_fft:
+        frame = np.pad(frame.astype(np.float64), (0, n_fft - len(frame)), mode="constant")
+    windowed = frame * np.hanning(n_fft)
+    spec = np.abs(np.fft.rfft(windowed))
+    freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+
+    f0_hz = fundamental_freq if fundamental_freq > 0 else 110.0
+    odd_energy = 0.0
+    even_energy = 0.0
+    harmonic_count = 0
+    for h in range(1, 32):
+        harm_freq = h * f0_hz
+        if harm_freq >= sr / 2:
+            break
+        bin_idx = int(harm_freq * len(spec) / (sr / 2))
+        bin_idx = min(bin_idx, len(spec) - 1)
+        mag = float(spec[bin_idx])
+        if mag > 1e-8:
+            harmonic_count += 1
+        if h % 2 == 1:
+            odd_energy += mag
+        else:
+            even_energy += mag
+    total_harm = odd_energy + even_energy + 1e-9
+    odd_ratio = float(odd_energy / total_harm)
+    # Richness: how many harmonics present, normalized (e.g. 0-1 for 0-20 harmonics)
+    harmonic_richness = float(np.clip(harmonic_count / 20.0, 0.0, 1.0))
+
     return {
         "spectral_centroid": float(spectral_centroid),
         "spectral_rolloff": float(spectral_rolloff),
@@ -105,5 +138,7 @@ def analyze_audio(file_path: str) -> dict:
         "release_time": float(np.clip(release_time, 0.02, 4.0)),
         "sustain_energy": sustain_energy,
         "zero_crossing_rate": zcr,
+        "harmonic_odd_ratio": odd_ratio,
+        "harmonic_richness": harmonic_richness,
         "sample_rate": float(sr),
     }
