@@ -19,15 +19,18 @@ def is_full_vital_preset(data: dict) -> bool:
     return isinstance(data.get("settings"), dict)
 
 
+def get_default_template_path() -> str:
+    """Return the first existing path from default template locations."""
+    for p in DEFAULT_TEMPLATE_PATHS:
+        if os.path.isfile(p):
+            return p
+    return "mapping/template.vital"
+
+
 def load_template(path: str = None):
     """Load a full-format Vital preset. If path is None, try default locations."""
     if path is None:
-        for p in DEFAULT_TEMPLATE_PATHS:
-            if os.path.isfile(p):
-                path = p
-                break
-        if path is None:
-            path = "mapping/template.vital"
+        path = get_default_template_path()
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not is_full_vital_preset(data):
