@@ -113,16 +113,31 @@ RULES_CONFIG = {
         "freq_min": -4.0,
         "freq_range": 8.0,
     },
-    # FX (dry/wet 0..1; drive in plugin units)
+    # Effects chain: map features to all effect params (tweak ranges here)
     "fx": {
-        "reverb_dry_wet_min": 0.1,
-        "reverb_dry_wet_scale": 0.7,
-        "chorus_dry_wet_min": 0.15,
-        "chorus_dry_wet_scale": 0.6,
-        "distortion_drive_min": 10.0,
-        "distortion_drive_scale": 50.0,
-        "distortion_mix_default": 0.4,
-        "delay_dry_wet_scale": 0.3,
+        "reverb_dry_wet_min": 0.08,
+        "reverb_dry_wet_scale": 0.6,
+        "reverb_decay_min": 0.3,
+        "reverb_decay_scale": 0.8,
+        "reverb_size_min": 0.3,
+        "reverb_size_scale": 0.6,
+        "chorus_dry_wet_min": 0.05,
+        "chorus_dry_wet_scale": 0.5,
+        "chorus_mod_depth_scale": 0.5,
+        "chorus_feedback_scale": 0.4,
+        "distortion_drive_min": 8.0,
+        "distortion_drive_scale": 45.0,
+        "distortion_mix_default": 0.35,
+        "distortion_filter_cutoff_scale": 80.0,
+        "delay_dry_wet_scale": 0.25,
+        "delay_feedback_scale": 0.5,
+        "compressor_mix_scale": 0.5,
+        "phaser_dry_wet_scale": 0.4,
+        "flanger_dry_wet_scale": 0.35,
+        "eq_low_gain_min": -12.0,
+        "eq_low_gain_scale": 10.0,
+        "eq_high_gain_scale": 8.0,
+        "eq_band_gain_scale": 6.0,
     },
     # Pitch: map detected f0 to osc_1_transpose (semitones) + osc_1_tune (fine -1..1)
     "pitch": {
@@ -240,32 +255,96 @@ def _pitch_params(features: dict, config: dict) -> dict:
 
 
 def _fx_params(features: dict, config: dict) -> dict:
-    """Reverb, chorus, distortion, delay amounts from sustain/movement/brightness/noise."""
+    """Full effects chain: distortion, chorus, reverb, delay, compressor, phaser, flanger, EQ from features."""
     brightness = features["brightness"]
     noisiness = features["noisiness"]
     sustain = features["sustain_amount"]
     tonal = features["tonal_vs_perc"]
     movement = features["movement"]
     fx = config["fx"]
-    reverb = fx["reverb_dry_wet_min"] + fx["reverb_dry_wet_scale"] * sustain * tonal
-    chorus = fx["chorus_dry_wet_min"] + fx["chorus_dry_wet_scale"] * movement * (0.5 + 0.5 * noisiness)
+
+    # Reverb: more sustain/tonal -> more reverb and longer decay
+    reverb_wet = fx["reverb_dry_wet_min"] + fx["reverb_dry_wet_scale"] * sustain * tonal
+    reverb_decay = fx["reverb_decay_min"] + fx["reverb_decay_scale"] * sustain
+    reverb_size = fx["reverb_size_min"] + fx["reverb_size_scale"] * (0.5 + 0.5 * tonal)
+
+    # Chorus: movement and noisiness -> depth and feedback
+    chorus_wet = fx["chorus_dry_wet_min"] + fx["chorus_dry_wet_scale"] * movement * (0.5 + 0.5 * noisiness)
+    chorus_mod = fx["chorus_mod_depth_scale"] * movement
+    chorus_fb = 0.2 + fx["chorus_feedback_scale"] * movement
+
+    # Distortion: brightness and noisiness -> drive; filter cutoff follows brightness
     drive = fx["distortion_drive_min"] + fx["distortion_drive_scale"] * (0.6 * brightness + 0.4 * noisiness)
+    dist_cutoff = 15.0 + fx["distortion_filter_cutoff_scale"] * brightness
+
+    # Delay: movement, less for very tonal
     delay_wet = fx["delay_dry_wet_scale"] * movement * (1.0 - tonal * 0.5)
+    delay_fb = 0.3 + fx["delay_feedback_scale"] * movement
+
+    # Compressor: always on, mix from sustain (glue)
+    comp_mix = 0.5 + fx["compressor_mix_scale"] * (sustain * 0.5 + movement * 0.3)
+
+    # Phaser / Flanger: subtle for movement; more for synthetic sounds
+    phaser_wet = fx["phaser_dry_wet_scale"] * movement * (0.3 + 0.7 * noisiness)
+    flanger_wet = fx["flanger_dry_wet_scale"] * movement * noisiness
+
+    # EQ: brightness -> high shelf; low end from tonal; mid from richness
+    eq_low = fx["eq_low_gain_min"] + fx["eq_low_gain_scale"] * (1.0 - noisiness)
+    eq_high = fx["eq_high_gain_scale"] * brightness
+    eq_band = fx["eq_band_gain_scale"] * (0.5 + 0.5 * tonal)
+
     return {
-        "reverb_on": 1.0,
-        "reverb_dry_wet": min(1.0, reverb),
-        "chorus_on": 1.0,
-        "chorus_dry_wet": min(1.0, chorus),
         "distortion_on": 1.0,
-        "distortion_drive": drive,
+        "distortion_drive": max(5.0, drive),
         "distortion_mix": fx["distortion_mix_default"],
-        "delay_on": 1.0 if delay_wet > 0.05 else 0.0,
+        "distortion_type": 3.0,
+        "distortion_filter_cutoff": min(100.0, dist_cutoff),
+        "distortion_filter_blend": 0.7,
+        "chorus_on": 1.0,
+        "chorus_dry_wet": min(1.0, chorus_wet),
+        "chorus_feedback": min(1.0, chorus_fb),
+        "chorus_mod_depth": min(1.0, chorus_mod),
+        "chorus_frequency": -3.0,
+        "chorus_cutoff": 50.0 + 30.0 * brightness,
+        "chorus_spread": 0.5 + 0.4 * movement,
+        "chorus_voices": 8.0,
+        "reverb_on": 1.0,
+        "reverb_dry_wet": min(1.0, reverb_wet),
+        "reverb_decay_time": min(1.5, reverb_decay),
+        "reverb_size": min(1.0, reverb_size),
+        "reverb_pre_low_cutoff": 20.0,
+        "reverb_pre_high_cutoff": 100.0,
+        "reverb_chorus_amount": 0.15 + 0.2 * movement,
+        "delay_on": 1.0 if delay_wet > 0.04 else 0.0,
         "delay_dry_wet": min(1.0, delay_wet),
+        "delay_feedback": min(0.75, delay_fb),
+        "delay_filter_cutoff": 50.0 + 25.0 * brightness,
+        "delay_frequency": 1.5 + movement * 1.5,
+        "compressor_on": 1.0,
+        "compressor_mix": min(1.0, comp_mix),
+        "compressor_attack": 0.4,
+        "compressor_release": 0.5,
+        "phaser_on": 1.0 if phaser_wet > 0.06 else 0.0,
+        "phaser_dry_wet": min(1.0, phaser_wet),
+        "phaser_mod_depth": 15.0 + 15.0 * movement,
+        "phaser_center": 60.0 + 40.0 * brightness,
+        "phaser_feedback": 0.3 + 0.2 * movement,
+        "flanger_on": 1.0 if flanger_wet > 0.05 else 0.0,
+        "flanger_dry_wet": min(1.0, flanger_wet),
+        "flanger_mod_depth": 0.3 + 0.3 * movement,
+        "flanger_feedback": 0.3,
+        "eq_on": 1.0,
+        "eq_low_gain": max(-18.0, min(6.0, eq_low)),
+        "eq_low_cutoff": 80.0,
+        "eq_high_gain": max(-6.0, min(9.0, eq_high)),
+        "eq_high_cutoff": 8000.0,
+        "eq_band_gain": max(-6.0, min(9.0, eq_band)),
+        "eq_band_cutoff": 800.0 + 2000.0 * brightness,
     }
 
 
 def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None:
-    """In-place: for very tonal, low-noise pluck-like sounds (e.g. piano), warm timbre, gentle filter, keep template pitch."""
+    """In-place: for very tonal, low-noise pluck-like sounds (e.g. piano), warm timbre, gentle effects, keep template pitch."""
     ac = config["acoustic_like"]
     if features["tonal_vs_perc"] < ac["tonal_vs_perc_min"]:
         return
@@ -275,16 +354,24 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
         return
     params["osc_1_unison_voices"] = 1.0
     params["osc_1_unison_detune"] = features["brightness"] * ac["unison_detune_scale"]
-    # Warm oscillator: keep in triangle/round zone (not harsh saw)
     b = features["brightness"]
     params["osc_1_wave_frame"] = ac["wave_frame_min"] + b * (ac["wave_frame_max"] - ac["wave_frame_min"])
-    # Warmer filter (piano body)
     params["filter_1_cutoff"] = ac["filter_cutoff_min"] + b * (ac["filter_cutoff_max"] - ac["filter_cutoff_min"])
     params["filter_1_resonance"] = 0.15 + 0.25 * b
+    # Gentle effects chain for acoustic (piano, etc.)
     params["chorus_dry_wet"] = ac["chorus_dry_wet_min"] + features["movement"] * ac["chorus_dry_wet_movement_scale"]
+    params["chorus_mod_depth"] = min(params.get("chorus_mod_depth", 0.5) * 0.4, 0.3)
     params["distortion_drive"] = ac["distortion_drive_min"] + features["brightness"] * ac["distortion_drive_brightness_scale"]
-    params["reverb_dry_wet"] = min(0.25, params.get("reverb_dry_wet", 0.3))
-    # Keep template pitch (don't force bass from low-note analysis)
+    params["distortion_mix"] = 0.2
+    params["reverb_dry_wet"] = min(0.22, params.get("reverb_dry_wet", 0.3))
+    params["reverb_decay_time"] = min(0.5, params.get("reverb_decay_time", 0.6))
+    params["reverb_size"] = min(0.5, params.get("reverb_size", 0.6))
+    params["delay_dry_wet"] = min(0.08, params.get("delay_dry_wet", 0.2))
+    params["phaser_on"] = 0.0
+    params["flanger_on"] = 0.0
+    params["compressor_mix"] = min(0.65, params.get("compressor_mix", 0.8))
+    params["eq_low_gain"] = max(-6.0, min(3.0, params.get("eq_low_gain", 0)))
+    params["eq_high_gain"] = max(-3.0, min(5.0, params.get("eq_high_gain", 0)))
     params.pop("osc_1_transpose", None)
     params.pop("osc_1_tune", None)
 
