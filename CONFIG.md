@@ -14,6 +14,8 @@
    - `reverb_wet_max`, `delay_wet_max`, `chorus_wet_max`: cap FX amount so e.g. piano stays light.
    - `osc_2`, `filter_2`, `lfo`: turn blocks on/off.
 
+   **`RULES_CONFIG["envelope_pluck_floor"]`** (pluck, piano_pluck, bass_pluck): `decay_min` (default 0.9 s), `decay_max`, `release_min` (0.6 s), `release_max`. When `decay_scale_by_wave_tilt` is true, decay is scaled by the same tilt used for wavetable position (brighter/richer waves get slightly longer decay).
+
 2. **`mapping/rules_engine.py` → `RULES_CONFIG["acoustic_like"]`**  
    Piano-only: filter cutoff range, envelope caps, wave_frame (overrides generic osc for piano_pluck).
 

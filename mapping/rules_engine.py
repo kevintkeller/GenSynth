@@ -37,6 +37,14 @@ RULES_CONFIG = {
         "release": 0.22,
         "release_power": -0.5,
     },
+    # Pluck/piano/bass: minimum decay and release so tail is audible; scale by wavetable (richer = longer).
+    "envelope_pluck_floor": {
+        "decay_min": 0.9,
+        "decay_max": 2.2,
+        "release_min": 0.6,
+        "release_max": 1.5,
+        "decay_scale_by_wave_tilt": True,
+    },
     "envelope_pad": {
         "delay": 0.0,
         "hold_min": 0.02,
@@ -180,7 +188,8 @@ def _classify_envelope(features: dict, config: dict) -> str:
 
 def _env_params(features: dict, config: dict) -> dict:
     """
-    Build envelope 1 from analyzed audio. Pluck/piano get a decay floor so decay isn't too short.
+    Build envelope 1 from analyzed audio. Pluck/piano/bass get a higher decay/release floor
+    and optional scaling by wavetable tilt (richer waves = longer decay so tail is audible).
     """
     g = config["envelope_global"]
     attack_sec = float(features.get("attack_sec", 0.01))
@@ -188,12 +197,26 @@ def _env_params(features: dict, config: dict) -> dict:
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
     sc = features.get("sound_class", "standard")
+    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck")
 
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
-    if sc in ("pluck", "piano_pluck"):
-        decay = max(decay, 0.45)
     release = max(g["min_release"], min(g["max_release"], release_sec))
+    sustain = max(0.0, min(1.0, sustain_level))
+
+    if is_pluck_class:
+        pf = config.get("envelope_pluck_floor", {})
+        decay_min = pf.get("decay_min", 0.9)
+        decay_max = pf.get("decay_max", 2.2)
+        release_min = pf.get("release_min", 0.6)
+        release_max = pf.get("release_max", 1.5)
+        decay = max(decay_min, min(decay_max, decay))
+        release = max(release_min, min(release_max, release))
+        if pf.get("decay_scale_by_wave_tilt", True):
+            brightness = features.get("brightness", 0.5)
+            odd_ratio = features.get("harmonic_odd_ratio", 0.5)
+            tilt = (1.0 - odd_ratio) * 0.3 + brightness * 0.7
+            decay = min(decay_max, decay * (0.88 + 0.28 * tilt))
     sustain = max(0.0, min(1.0, sustain_level))
 
     return {
@@ -314,19 +337,33 @@ def _macro_params(features: dict, config: dict) -> dict:
 
 def _env2_env3_env4_params(features: dict, config: dict) -> dict:
     """ENV 2, 3, 4: filter/modulation envelopes from same analyzed envelope or variants.
-    ENV 2 decay is synced with ENV 1 (same pluck floor) so filter follows amplitude."""
+    ENV 2 decay/release synced with ENV 1 (same pluck floor + wavetable scaling)."""
     g = config["envelope_global"]
     attack_sec = float(features.get("attack_sec", 0.01))
     decay_sec = float(features.get("decay_sec", 0.2))
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
     sc = features.get("sound_class", "standard")
+    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck")
+
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
-    if sc in ("pluck", "piano_pluck"):
-        decay = max(decay, 0.45)
     release = max(g["min_release"], min(g["max_release"], release_sec))
     sustain = max(0.0, min(1.0, sustain_level))
+
+    if is_pluck_class:
+        pf = config.get("envelope_pluck_floor", {})
+        decay_min = pf.get("decay_min", 0.9)
+        decay_max = pf.get("decay_max", 2.2)
+        release_min = pf.get("release_min", 0.6)
+        release_max = pf.get("release_max", 1.5)
+        decay = max(decay_min, min(decay_max, decay))
+        release = max(release_min, min(release_max, release))
+        if pf.get("decay_scale_by_wave_tilt", True):
+            brightness = features.get("brightness", 0.5)
+            odd_ratio = features.get("harmonic_odd_ratio", 0.5)
+            tilt = (1.0 - odd_ratio) * 0.3 + brightness * 0.7
+            decay = min(decay_max, decay * (0.88 + 0.28 * tilt))
     # ENV 2: same shape as ENV 1 (for filter modulation routing in Vital)
     # ENV 3: faster attack/decay for mod
     # ENV 4: slower, more sustain for pads

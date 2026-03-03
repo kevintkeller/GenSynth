@@ -27,12 +27,12 @@ def build_feature_vector(raw_features: dict) -> dict:
     sustain_level = float(np.clip(raw_features.get("sustain_ratio", 0.5), 0.0, 1.0))
     release_sec = float(np.clip(raw_features.get("release_time", 0.3), 0.02, 4.0))
 
-    # For percussive/pluck: ensure decay is not too short (floor), allow longer decay/release
+    # For percussive/pluck: ensure decay and release are long enough for audible tail
     if attack_speed > 0.6 and sustain_amount < 0.4:
-        decay_sec = max(decay_sec, 0.35)
-        decay_sec = min(decay_sec, 1.2)
-        release_sec = max(release_sec, 0.2)
-        release_sec = min(release_sec, 1.5)
+        decay_sec = max(decay_sec, 0.55)
+        decay_sec = min(decay_sec, 2.2)
+        release_sec = max(release_sec, 0.45)
+        release_sec = min(release_sec, 1.8)
         sustain_level = min(sustain_level, 0.22)
 
     # Harmonic timbre (0-1): odd vs even balance, and richness
