@@ -3,24 +3,26 @@
 ## Approach
 
 - **Rule-based mapping** from audio features to Vital params. One pipeline: analyze → features → sound_class → rules → patch export.
-- **Per–sound_class config** makes piano, bass, pluck, pad, and lead clearly different (wave ranges, FX caps, which oscillators/filters are on).
+- **Instrument-specific rules**: piano, bass, guitar, pluck, lead, pad, and standard each have dedicated wave ranges, resonance/distortion caps, and FX so presets sound less buzzy and more like the target (clear piano, clean pluck, etc.).
 - **Preset bank** (`mapping/preset_bank.py`) can derive default ranges from your Vital preset examples; use `get_per_type_defaults()` to tune.
 
 ## Where to tune (no code changes)
 
 1. **`mapping/rules_engine.py` → `RULES_CONFIG["sound_class"]`**  
-   For each class (`piano_pluck`, `bass_pluck`, `pluck`, `pad`, `lead`, `standard`):
-   - `wave_min`, `wave_max`: osc 1 wavetable frame range (0–255). Piano 32–52, bass 8–38, pluck 38–85, lead 70–180.
-   - `reverb_wet_max`, `delay_wet_max`, `chorus_wet_max`: cap FX amount so e.g. piano stays light.
-   - `osc_2`, `filter_2`, `lfo`: turn blocks on/off.
+   **Instrument types**: `piano_pluck`, `bass_pluck`, `guitar`, `pluck`, `pad`, `lead`, `standard`. Each has:
+   - **`wave_min`, `wave_max`**: osc 1 wavetable range (0–255). Rounded waves = less buzz (piano 32–48, pluck 28–62, guitar 22–55, bass 8–32, lead 65–150).
+   - **`resonance_max`, `distortion_mix_max`**: cap filter resonance and distortion mix so the preset is clearer, not buzzy.
+   - **`phaser_off`, `flanger_off`**: set true for acoustic/pluck/guitar/bass to avoid metallic buzz.
+   - **`reverb_wet_max`, `delay_wet_max`, `chorus_wet_max`**: cap FX per type.
+   - **`osc_2`, `filter_2`, `lfo`**: turn blocks on/off (e.g. pluck has filter_2 off for cleaner tone).
 
-   **`RULES_CONFIG["envelope_pluck_floor"]`** (pluck, piano_pluck, bass_pluck): `decay_min` (default 0.9 s), `decay_max`, `release_min` (0.6 s), `release_max`. When `decay_scale_by_wave_tilt` is true, decay is scaled by the same tilt used for wavetable position (brighter/richer waves get slightly longer decay).
+   **`RULES_CONFIG["envelope_pluck_floor"]`** (pluck, piano_pluck, bass_pluck, guitar): `decay_min` (default 0.9 s), `decay_max`, `release_min` (0.6 s), `release_max`. When `decay_scale_by_wave_tilt` is true, decay is scaled by wavetable tilt (brighter = slightly longer decay).
 
 2. **`mapping/rules_engine.py` → `RULES_CONFIG["acoustic_like"]`**  
    Piano-only: filter cutoff range, envelope caps, wave_frame (overrides generic osc for piano_pluck).
 
 3. **`analysis/feature_vector.py` → `_classify_sound()`**  
-   Thresholds for assigning sound_class (attack_speed, sustain_amount, tonal_vs_perc, noisiness, fundamental_freq).
+   Thresholds for assigning instrument type: attack_speed, sustain_amount, tonal_vs_perc, noisiness, fundamental_freq. Guitar = mid range (E2–G4, ~82–420 Hz), plucky or medium sustain, tonal.
 
 4. **`mapping/vital_writer.py`**  
    `PATCH_SAFE_RANGES`, `FX_SAFE_RANGES`: clamp any param so Vital never sees out-of-range values.
@@ -37,7 +39,7 @@ defaults = get_per_type_defaults()
 
 ## Export mode
 
-- **Core + FX for pad/lead only** (default): patches oscillators, envelopes, filters, LFOs for all; FX (reverb, delay, chorus, compressor) are patched only when sound_class is **pad** or **lead**. Piano, bass, and pluck have effects forced off to avoid Vital crashes.
+- **Core + FX for pad/lead only** (default): patches oscillators, envelopes, filters, LFOs for all; FX are patched only when sound_class is **pad** or **lead**. Piano, bass, guitar, and pluck have effects forced off (dryer, clearer timbre and to avoid Vital crashes).
 - Set `PATCH_CORE_ONLY=0` to patch every controlled param (may hit Vital bugs on some effect params).
 
 ## Macros

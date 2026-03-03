@@ -110,12 +110,14 @@ def _classify_sound(
     fundamental_freq: float = 440.0,
 ) -> str:
     """
-    Classify into piano_pluck, bass_pluck, pad, pluck, lead, or standard from analyzed features.
-    Used by rules to turn Vital blocks on/off and set timbre. Bass = low f0 gets OSC 2 + Filter 2.
+    Classify into piano_pluck, bass_pluck, guitar, pad, pluck, lead, or standard from analyzed features.
+    Each type gets dedicated rules for clearer timbre (less buzz). Guitar = mid range (E2–G4), plucky/strummed.
     """
     is_plucky = attack_speed >= 0.6 and sustain_amount <= 0.45
     is_bass_range = fundamental_freq > 0 and fundamental_freq < 220.0  # ~A2 and below
+    is_guitar_range = 82.0 <= fundamental_freq <= 420.0  # E2 to ~G4
 
+    # Piano: very tonal, clean, plucky, not bass
     if (
         attack_speed >= 0.65
         and sustain_amount <= 0.4
@@ -127,6 +129,15 @@ def _classify_sound(
         return "piano_pluck"
     if is_bass_range and is_plucky:
         return "bass_pluck"
+    # Guitar: mid range, plucky or medium sustain, tonal, moderate brightness
+    if (
+        is_guitar_range
+        and attack_speed >= 0.5
+        and sustain_amount <= 0.55
+        and tonal_vs_perc >= 0.5
+        and noisiness <= 0.55
+    ):
+        return "guitar"
     if attack_speed <= 0.45 and sustain_amount >= 0.55:
         return "pad"
     if is_plucky:

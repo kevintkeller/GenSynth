@@ -114,20 +114,43 @@ RULES_CONFIG = {
         "env_release_min": 0.35,
         "env_release_max": 1.0,
     },
-    # Per sound_class: blocks on/off + wave_frame range + FX caps so piano/bass/pluck differ clearly.
+    # Per instrument: blocks, wave range (rounded = less buzz), resonance/distortion caps, FX. Tuned for clear timbre.
     "sound_class": {
         "piano_pluck": {"osc_2": False, "osc_3": False, "filter_2": False, "lfo": False, "unison": 1,
-                        "wave_min": 32.0, "wave_max": 52.0, "reverb_wet_max": 0.18, "delay_wet_max": 0.0, "chorus_wet_max": 0.06},
+                        "wave_min": 32.0, "wave_max": 48.0,
+                        "resonance_max": 0.18, "distortion_mix_max": 0.08, "filter_cutoff_floor": 58.0,
+                        "reverb_wet_max": 0.18, "delay_wet_max": 0.0, "chorus_wet_max": 0.06,
+                        "phaser_off": True, "flanger_off": True},
         "bass_pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1,
-                       "wave_min": 8.0, "wave_max": 38.0, "reverb_wet_max": 0.14, "delay_wet_max": 0.06, "chorus_wet_max": 0.12},
+                       "wave_min": 8.0, "wave_max": 32.0,
+                       "resonance_max": 0.22, "distortion_mix_max": 0.1,
+                       "reverb_wet_max": 0.14, "delay_wet_max": 0.06, "chorus_wet_max": 0.12,
+                       "phaser_off": True, "flanger_off": True},
+        "guitar": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1,
+                   "wave_min": 22.0, "wave_max": 55.0, "filter_cutoff_floor": 45.0,
+                   "resonance_max": 0.26, "distortion_mix_max": 0.12, "filter_2_mix_max": 0.35,
+                   "reverb_wet_max": 0.22, "delay_wet_max": 0.12, "chorus_wet_max": 0.1,
+                   "phaser_off": True, "flanger_off": True},
         "pad": {"osc_2": True, "osc_3": True, "filter_2": True, "lfo": True, "unison": 2,
-                "wave_min": 15.0, "wave_max": 100.0, "reverb_wet_max": 0.6, "delay_wet_max": 0.35, "chorus_wet_max": 0.5},
-        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1,
-                  "wave_min": 38.0, "wave_max": 85.0, "filter_cutoff_floor": 55.0, "reverb_wet_max": 0.2, "delay_wet_max": 0.15, "chorus_wet_max": 0.2},
+                "wave_min": 15.0, "wave_max": 100.0,
+                "resonance_max": 0.5, "distortion_mix_max": 0.3,
+                "reverb_wet_max": 0.6, "delay_wet_max": 0.35, "chorus_wet_max": 0.5,
+                "phaser_off": False, "flanger_off": False},
+        "pluck": {"osc_2": True, "osc_3": False, "filter_2": False, "lfo": True, "unison": 1,
+                  "wave_min": 28.0, "wave_max": 62.0, "filter_cutoff_floor": 50.0,
+                  "resonance_max": 0.28, "distortion_mix_max": 0.12,
+                  "reverb_wet_max": 0.2, "delay_wet_max": 0.15, "chorus_wet_max": 0.15,
+                  "phaser_off": True, "flanger_off": True},
         "lead": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 2,
-                 "wave_min": 70.0, "wave_max": 180.0, "reverb_wet_max": 0.4, "delay_wet_max": 0.25, "chorus_wet_max": 0.4},
+                 "wave_min": 65.0, "wave_max": 150.0,
+                 "resonance_max": 0.42, "distortion_mix_max": 0.25,
+                 "reverb_wet_max": 0.4, "delay_wet_max": 0.25, "chorus_wet_max": 0.4,
+                 "phaser_off": False, "flanger_off": False},
         "standard": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1,
-                     "wave_min": 25.0, "wave_max": 120.0, "reverb_wet_max": 0.35, "delay_wet_max": 0.2, "chorus_wet_max": 0.3},
+                     "wave_min": 25.0, "wave_max": 100.0,
+                     "resonance_max": 0.38, "distortion_mix_max": 0.2,
+                     "reverb_wet_max": 0.35, "delay_wet_max": 0.2, "chorus_wet_max": 0.3,
+                     "phaser_off": False, "flanger_off": False},
     },
     # Filter (Vital filter_1_cutoff ~0–120 Hz-style units)
     "filter": {
@@ -197,7 +220,7 @@ def _env_params(features: dict, config: dict) -> dict:
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
     sc = features.get("sound_class", "standard")
-    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck")
+    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck", "guitar")
 
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
@@ -344,7 +367,7 @@ def _env2_env3_env4_params(features: dict, config: dict) -> dict:
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
     sc = features.get("sound_class", "standard")
-    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck")
+    is_pluck_class = sc in ("pluck", "piano_pluck", "bass_pluck", "guitar")
 
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
@@ -628,9 +651,38 @@ def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
     elif sc == "pluck":
         b = features.get("brightness", 0.5)
         r = features.get("harmonic_richness", 0.5)
-        params["osc_2_wave_frame"] = 35.0 + 45.0 * b
-        params["osc_2_level"] = 0.3 + 0.35 * r
+        params["osc_2_wave_frame"] = 28.0 + 25.0 * b
+        params["osc_2_level"] = 0.28 + 0.25 * r
         params["lfo_1_frequency"] = 0.2
+    elif sc == "guitar":
+        b = features.get("brightness", 0.5)
+        params["osc_2_wave_frame"] = 22.0 + 25.0 * b
+        params["osc_2_level"] = 0.3
+    if sc_config.get("filter_2_mix_max") is not None:
+        params["filter_2_mix"] = min(params.get("filter_2_mix", 0.5), sc_config["filter_2_mix_max"])
+
+
+def _instrument_timbre_overrides(params: dict, features: dict, config: dict) -> None:
+    """Apply per-instrument de-buzz: resonance cap, distortion mix cap, phaser/flanger off, wave clamp."""
+    sc = features.get("sound_class", "standard")
+    sc_config = config.get("sound_class", {}).get(sc, {})
+    if not sc_config:
+        return
+    if sc_config.get("resonance_max") is not None:
+        params["filter_1_resonance"] = min(params.get("filter_1_resonance", 0.3), sc_config["resonance_max"])
+    if sc_config.get("distortion_mix_max") is not None:
+        params["distortion_mix"] = min(params.get("distortion_mix", 0.35), sc_config["distortion_mix_max"])
+    if sc_config.get("phaser_off"):
+        params["phaser_on"] = 0.0
+        params["phaser_dry_wet"] = 0.0
+    if sc_config.get("flanger_off"):
+        params["flanger_on"] = 0.0
+        params["flanger_dry_wet"] = 0.0
+    w_min = sc_config.get("wave_min")
+    w_max = sc_config.get("wave_max")
+    if w_min is not None and w_max is not None:
+        w = params.get("osc_1_wave_frame", 50.0)
+        params["osc_1_wave_frame"] = float(max(w_min, min(w_max, w)))
 
 
 def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dict:
@@ -657,6 +709,7 @@ def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dic
     params.update(_pitch_params(features, cfg))
     _acoustic_like_overrides(params, features, cfg)
     _sound_class_overrides(params, features, cfg)
+    _instrument_timbre_overrides(params, features, cfg)
 
     # Only return params we officially control; ensure no NaN/Inf (Vital can crash)
     allowed = get_controlled_params_set()
