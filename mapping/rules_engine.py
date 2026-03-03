@@ -1,9 +1,10 @@
 # mapping/rules_engine.py
 """
-Heuristic mapping: audio feature vector -> Vital parameter dict.
-Designed for ~70% accuracy and easy tuning; same param set will feed ML later.
-
-Tweak RULES_CONFIG to adjust behavior without changing logic.
+Rule-based mapping: audio feature vector -> Vital parameter dict.
+- sound_class (piano_pluck, bass_pluck, pluck, pad, lead, standard) drives distinct wave ranges and FX.
+- Per-class wave_frame (osc_1) and FX caps ensure piano/bass/pluck sound different.
+- Optional: mapping.preset_bank.get_per_type_defaults() can seed or tune from Vital preset examples.
+Tune RULES_CONFIG["sound_class"] and ["acoustic_like"] without changing code.
 """
 
 import math
@@ -105,15 +106,20 @@ RULES_CONFIG = {
         "env_release_min": 0.35,
         "env_release_max": 1.0,
     },
-    # Per sound_class: turn Vital blocks on/off (see _sound_class_overrides)
-    # Only piano_pluck stays minimal (1 osc, 1 filter). Others get OSC 2 and/or Filter 2 so presets vary.
+    # Per sound_class: blocks on/off + wave_frame range + FX caps so piano/bass/pluck differ clearly.
     "sound_class": {
-        "piano_pluck": {"osc_2": False, "osc_3": False, "filter_2": False, "lfo": False, "unison": 1},
-        "bass_pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1},
-        "pad": {"osc_2": True, "osc_3": True, "filter_2": True, "lfo": True, "unison": 2},
-        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1},
-        "lead": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 2},
-        "standard": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1},
+        "piano_pluck": {"osc_2": False, "osc_3": False, "filter_2": False, "lfo": False, "unison": 1,
+                        "wave_min": 32.0, "wave_max": 52.0, "reverb_wet_max": 0.18, "delay_wet_max": 0.0, "chorus_wet_max": 0.06},
+        "bass_pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1,
+                       "wave_min": 8.0, "wave_max": 38.0, "reverb_wet_max": 0.14, "delay_wet_max": 0.06, "chorus_wet_max": 0.12},
+        "pad": {"osc_2": True, "osc_3": True, "filter_2": True, "lfo": True, "unison": 2,
+                "wave_min": 15.0, "wave_max": 100.0, "reverb_wet_max": 0.6, "delay_wet_max": 0.35, "chorus_wet_max": 0.5},
+        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1,
+                  "wave_min": 38.0, "wave_max": 85.0, "reverb_wet_max": 0.2, "delay_wet_max": 0.15, "chorus_wet_max": 0.2},
+        "lead": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 2,
+                 "wave_min": 70.0, "wave_max": 180.0, "reverb_wet_max": 0.4, "delay_wet_max": 0.25, "chorus_wet_max": 0.4},
+        "standard": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1,
+                     "wave_min": 25.0, "wave_max": 120.0, "reverb_wet_max": 0.35, "delay_wet_max": 0.2, "chorus_wet_max": 0.3},
     },
     # Filter (Vital filter_1_cutoff ~0–120 Hz-style units)
     "filter": {
@@ -203,20 +209,18 @@ def _env_params(features: dict, config: dict) -> dict:
 
 
 def _osc_params(features: dict, config: dict) -> dict:
-    """Oscillator 1: wave frame from brightness + harmonic character (odd/even, richness)."""
+    """Oscillator 1: wave frame from sound_class range + brightness so piano/bass/pluck differ."""
     brightness = features["brightness"]
-    noisiness = features["noisiness"]
     richness = features.get("harmonic_richness", 0.5)
     odd_ratio = features.get("harmonic_odd_ratio", 0.5)
     oc = config["osc"]
-    # Low richness -> sine zone (0–sine_zone_max); high richness -> full range by brightness + even-harmonic tilt
-    if richness < 0.25:
-        wave_frame = 5.0 + brightness * (oc["sine_zone_max"] - 5.0)
-    else:
-        # More even harmonics (low odd_ratio) = brighter/saw-ish; more odd = triangle/square
-        tilt = (1.0 - odd_ratio) * 0.4 + brightness * 0.6
-        wave_frame = oc["sine_zone_max"] + tilt * (oc["wave_frame_max"] - oc["sine_zone_max"])
-    wave_frame = float(max(0.0, min(oc["wave_frame_max"], wave_frame)))
+    sc = features.get("sound_class", "standard")
+    sc_cfg = config.get("sound_class", {}).get(sc, {})
+    w_min = sc_cfg.get("wave_min", oc["sine_zone_max"])
+    w_max = sc_cfg.get("wave_max", oc["wave_frame_max"])
+    tilt = (1.0 - odd_ratio) * 0.3 + brightness * 0.7
+    wave_frame = w_min + tilt * (w_max - w_min)
+    wave_frame = float(max(0.0, min(255.0, wave_frame)))
     unison_voices = 4.0 if brightness > oc["unison_voices_bright_threshold"] else 1.0
     unison_detune = brightness * oc["unison_detune_scale"]
     return {
@@ -413,6 +417,16 @@ def _fx_params(features: dict, config: dict) -> dict:
     eq_high = fx["eq_high_gain_scale"] * brightness
     eq_band = fx["eq_band_gain_scale"] * (0.5 + 0.5 * tonal)
 
+    sc = features.get("sound_class", "standard")
+    sc_cfg = config.get("sound_class", {}).get(sc, {})
+    reverb_cap = sc_cfg.get("reverb_wet_max", 0.5)
+    delay_cap = sc_cfg.get("delay_wet_max", 0.3)
+    chorus_cap = sc_cfg.get("chorus_wet_max", 0.4)
+    reverb_wet = min(reverb_cap, reverb_wet) if reverb_cap else min(1.0, reverb_wet)
+    if reverb_cap and reverb_wet < 0.04:
+        reverb_wet = 0.06 + (reverb_cap - 0.06) * 0.3
+    delay_wet = min(delay_cap, delay_wet) if delay_cap else min(1.0, delay_wet)
+    chorus_wet = min(chorus_cap, chorus_wet) if chorus_cap else min(1.0, chorus_wet)
     return {
         "distortion_on": 1.0,
         "distortion_drive": max(5.0, drive),
@@ -420,7 +434,7 @@ def _fx_params(features: dict, config: dict) -> dict:
         "distortion_type": 3.0,
         "distortion_filter_cutoff": min(100.0, dist_cutoff),
         "distortion_filter_blend": 0.7,
-        "chorus_on": 1.0,
+        "chorus_on": 1.0 if chorus_cap and chorus_wet > 0.02 else 0.0,
         "chorus_dry_wet": min(1.0, chorus_wet),
         "chorus_feedback": min(1.0, chorus_fb),
         "chorus_mod_depth": min(1.0, chorus_mod),
@@ -428,14 +442,14 @@ def _fx_params(features: dict, config: dict) -> dict:
         "chorus_cutoff": 50.0 + 30.0 * brightness,
         "chorus_spread": 0.5 + 0.4 * movement,
         "chorus_voices": 8.0,
-        "reverb_on": 1.0,
+        "reverb_on": 1.0 if reverb_cap and reverb_wet > 0.02 else 0.0,
         "reverb_dry_wet": min(1.0, reverb_wet),
         "reverb_decay_time": min(1.5, reverb_decay),
         "reverb_size": min(1.0, reverb_size),
         "reverb_pre_low_cutoff": 20.0,
         "reverb_pre_high_cutoff": 100.0,
         "reverb_chorus_amount": 0.15 + 0.2 * movement,
-        "delay_on": 1.0 if delay_wet > 0.04 else 0.0,
+        "delay_on": 1.0 if delay_cap and delay_wet > 0.03 else 0.0,
         "delay_dry_wet": min(1.0, delay_wet),
         "delay_feedback": min(0.75, delay_fb),
         "delay_filter_cutoff": 50.0 + 25.0 * brightness,
