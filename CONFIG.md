@@ -37,3 +37,28 @@ defaults = get_per_type_defaults()
 
 - **Core + FX for pad/lead only** (default): patches oscillators, envelopes, filters, LFOs for all; FX (reverb, delay, chorus, compressor) are patched only when sound_class is **pad** or **lead**. Piano, bass, and pluck have effects forced off to avoid Vital crashes.
 - Set `PATCH_CORE_ONLY=0` to patch every controlled param (may hit Vital bugs on some effect params).
+
+## Macros
+
+- **macro_control_1..4** are patched from analysis: brightness → 1, movement → 2, harmonic_richness → 3, noisiness → 4 (all 0–1).
+- Template search order prefers `vital_templates/Presets/Some crazy synthy shit 11212025.vital` when present; that preset has these keys and labels (SYNC, WAVES, DAMP, SPACE). Assign macros in Vital’s Matrix to filter/osc/LFO as needed.
+- Any full-format preset with `macro_control_1`–`macro_control_4` in `settings` will get these values; macro label keys (`macro1`–`macro4`) are left unchanged when using patch export.
+
+## Validation & research (accurate product)
+
+Settings and ranges are chosen so generated presets load correctly in Vital and reflect the analyzed audio.
+
+- **Brightness → filter / osc**  
+  Spectral centroid (and rolloff) are standard measures of perceived brightness; higher centroid ⇒ brighter sound. We map normalized brightness to filter cutoff (cutoff_min + brightness × range) and to wavetable frame (wave_frame 0–255: lower = more sine-like, higher = more saw-like), so brighter analysis yields a more open filter and brighter oscillator position.
+
+- **Envelope (ADSR) from analysis**  
+  Attack, decay, sustain, and release are taken from the analyzed amplitude envelope and written directly into Vital’s env 1–4. Pluck/piano get a decay floor so the tail isn’t too short. Vital’s documented ranges are respected: delay/hold 0–4 s, attack/decay/release 0–32 s, sustain 0–1 (see `mapping/vital_writer.py` PATCH_SAFE_RANGES).
+
+- **Macros**  
+  macro_control_1–4 are 0–1 and map to brightness, movement (spectral flux), harmonic_richness, and noisiness so the template’s Matrix assignments (e.g. SYNC, WAVES, DAMP, SPACE) receive sensible values.
+
+- **Vital ranges we enforce**  
+  Filter/EQ cutoffs 0–100; envelope times as above; osc wave_frame 0–255; unison voices 1–16; FX dry/wet and feedback in 0–1 (or documented caps). This avoids out-of-range values that could crash Vital or produce invalid presets.
+
+- **Sanity check**  
+  Load a generated `.vital` in Vital; the preset should load without errors and the played note should reflect the source (e.g. plucky vs pad-like, brighter vs darker). Tweak `RULES_CONFIG` and `analysis/feature_vector.py` thresholds if a class or timbre is off.

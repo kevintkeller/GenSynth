@@ -7,7 +7,9 @@ from copy import deepcopy
 from mapping.vital_params import filter_to_controlled
 
 # Full Vital presets have "settings" dict; simplified ones (WideSawLead, etc.) do not.
+# First path has macro_control_1..4 and macro labels (SYNC, WAVES, DAMP, SPACE); use it when present.
 DEFAULT_TEMPLATE_PATHS = [
+    "vital_templates/Presets/Some crazy synthy shit 11212025.vital",
     "vital_templates/Presets/blank-template.vital",
     "vital_templates/Presets/TEMPLATE.vital",
     "mapping/template.vital",

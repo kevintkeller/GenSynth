@@ -11,6 +11,8 @@ SANITIZE_MAX = 1000.0
 
 # Per-param ranges so we never write values that crash Vital (e.g. EQ cutoffs are 0-100 in preset).
 # Template uses ~0-100 for many cutoffs; writing 893/1000 caused crashes.
+# Envelope times: Vital allows delay/hold 0-4s, attack/decay/release 0-32s (see Vital user guide).
+# Wave frame: wavetable position 0-255 (low=sine-like, high=saw-like).
 PATCH_SAFE_RANGES = {
     "eq_low_cutoff": (0.0, 100.0),
     "eq_high_cutoff": (0.0, 100.0),
@@ -26,11 +28,25 @@ PATCH_SAFE_RANGES = {
     "osc_1_unison_voices": (1, 16),
     "osc_2_unison_voices": (1, 16),
     "osc_3_unison_voices": (1, 16),
+    "osc_1_wave_frame": (0.0, 255.0),
+    "osc_2_wave_frame": (0.0, 255.0),
+    "osc_3_wave_frame": (0.0, 255.0),
     "macro_control_1": (0.0, 1.0),
     "macro_control_2": (0.0, 1.0),
     "macro_control_3": (0.0, 1.0),
     "macro_control_4": (0.0, 1.0),
 }
+# Vital envelope: delay/hold 0-4s, attack/decay/release 0-32s, sustain 0-1, curve powers ~-2..2.
+for i in range(1, 5):
+    PATCH_SAFE_RANGES[f"env_{i}_delay"] = (0.0, 4.0)
+    PATCH_SAFE_RANGES[f"env_{i}_hold"] = (0.0, 4.0)
+    PATCH_SAFE_RANGES[f"env_{i}_attack"] = (0.0, 32.0)
+    PATCH_SAFE_RANGES[f"env_{i}_decay"] = (0.0, 32.0)
+    PATCH_SAFE_RANGES[f"env_{i}_release"] = (0.0, 32.0)
+    PATCH_SAFE_RANGES[f"env_{i}_sustain"] = (0.0, 1.0)
+    PATCH_SAFE_RANGES[f"env_{i}_attack_power"] = (-2.0, 2.0)
+    PATCH_SAFE_RANGES[f"env_{i}_decay_power"] = (-2.0, 2.0)
+    PATCH_SAFE_RANGES[f"env_{i}_release_power"] = (-2.0, 2.0)
 
 # When PATCH_CORE_ONLY=1, only these params are patched (no FX). Use to avoid Vital crash from effect params.
 PATCH_CORE_ONLY_PARAMS = frozenset(
