@@ -114,8 +114,8 @@ RULES_CONFIG = {
                        "wave_min": 8.0, "wave_max": 38.0, "reverb_wet_max": 0.14, "delay_wet_max": 0.06, "chorus_wet_max": 0.12},
         "pad": {"osc_2": True, "osc_3": True, "filter_2": True, "lfo": True, "unison": 2,
                 "wave_min": 15.0, "wave_max": 100.0, "reverb_wet_max": 0.6, "delay_wet_max": 0.35, "chorus_wet_max": 0.5},
-        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": False, "unison": 1,
-                  "wave_min": 38.0, "wave_max": 85.0, "reverb_wet_max": 0.2, "delay_wet_max": 0.15, "chorus_wet_max": 0.2},
+        "pluck": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1,
+                  "wave_min": 38.0, "wave_max": 85.0, "filter_cutoff_floor": 55.0, "reverb_wet_max": 0.2, "delay_wet_max": 0.15, "chorus_wet_max": 0.2},
         "lead": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 2,
                  "wave_min": 70.0, "wave_max": 180.0, "reverb_wet_max": 0.4, "delay_wet_max": 0.25, "chorus_wet_max": 0.4},
         "standard": {"osc_2": True, "osc_3": False, "filter_2": True, "lfo": True, "unison": 1,
@@ -180,18 +180,19 @@ def _classify_envelope(features: dict, config: dict) -> str:
 
 def _env_params(features: dict, config: dict) -> dict:
     """
-    Build envelope 1 from analyzed audio: direct mapping of measured attack/decay/sustain/release
-    so the Vital envelope matches the source sound for any input.
+    Build envelope 1 from analyzed audio. Pluck/piano get a decay floor so decay isn't too short.
     """
     g = config["envelope_global"]
-    # Use measured envelope (seconds and 0-1 level); fallbacks for older feature vectors
     attack_sec = float(features.get("attack_sec", 0.01))
     decay_sec = float(features.get("decay_sec", 0.2))
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
+    sc = features.get("sound_class", "standard")
 
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
+    if sc in ("pluck", "piano_pluck"):
+        decay = max(decay, 0.45)
     release = max(g["min_release"], min(g["max_release"], release_sec))
     sustain = max(0.0, min(1.0, sustain_level))
 
@@ -297,15 +298,33 @@ def _sample_params(features: dict, config: dict) -> dict:
     }
 
 
+def _macro_params(features: dict, config: dict) -> dict:
+    """Macro controls 0-1 from features; assign in Vital Matrix to filter/osc/etc."""
+    b = features.get("brightness", 0.5)
+    m = features.get("movement", 0.3)
+    r = features.get("harmonic_richness", 0.5)
+    n = features.get("noisiness", 0.2)
+    return {
+        "macro_control_1": max(0.0, min(1.0, b)),
+        "macro_control_2": max(0.0, min(1.0, m)),
+        "macro_control_3": max(0.0, min(1.0, r)),
+        "macro_control_4": max(0.0, min(1.0, n)),
+    }
+
+
 def _env2_env3_env4_params(features: dict, config: dict) -> dict:
-    """ENV 2, 3, 4: filter/modulation envelopes from same analyzed envelope or variants."""
+    """ENV 2, 3, 4: filter/modulation envelopes from same analyzed envelope or variants.
+    ENV 2 decay is synced with ENV 1 (same pluck floor) so filter follows amplitude."""
     g = config["envelope_global"]
     attack_sec = float(features.get("attack_sec", 0.01))
     decay_sec = float(features.get("decay_sec", 0.2))
     sustain_level = float(features.get("sustain_level", 0.3))
     release_sec = float(features.get("release_sec", 0.25))
+    sc = features.get("sound_class", "standard")
     attack = max(g["min_attack"], min(g["max_attack"], attack_sec))
     decay = max(0.01, min(g["max_decay"], decay_sec))
+    if sc in ("pluck", "piano_pluck"):
+        decay = max(decay, 0.45)
     release = max(g["min_release"], min(g["max_release"], release_sec))
     sustain = max(0.0, min(1.0, sustain_level))
     # ENV 2: same shape as ENV 1 (for filter modulation routing in Vital)
@@ -531,11 +550,13 @@ def _acoustic_like_overrides(params: dict, features: dict, config: dict) -> None
 
 
 def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
-    """In-place: turn Vital blocks on/off from detected sound_class. Force on when config says True so presets vary."""
+    """In-place: turn Vital blocks on/off, set OSC 2 wave from features, pluck filter floor, LFO."""
     sc = features.get("sound_class", "standard")
     sc_config = config.get("sound_class", {}).get(sc)
     if not sc_config:
         return
+    if sc_config.get("filter_cutoff_floor") is not None:
+        params["filter_1_cutoff"] = max(params.get("filter_1_cutoff", 50), sc_config["filter_cutoff_floor"])
     if sc_config.get("osc_2") is False:
         params["osc_2_on"] = 0.0
         params["osc_2_level"] = 0.0
@@ -567,6 +588,12 @@ def _sound_class_overrides(params: dict, features: dict, config: dict) -> None:
         params["osc_2_transpose"] = -12.0
         params["osc_2_wave_frame"] = 8.0
         params["osc_2_level"] = 0.5
+    elif sc == "pluck":
+        b = features.get("brightness", 0.5)
+        r = features.get("harmonic_richness", 0.5)
+        params["osc_2_wave_frame"] = 35.0 + 45.0 * b
+        params["osc_2_level"] = 0.3 + 0.35 * r
+        params["lfo_1_frequency"] = 0.2
 
 
 def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dict:
@@ -582,6 +609,7 @@ def build_vital_parameters(features: dict, config: Optional[dict] = None) -> dic
     params.update(_osc_params(features, cfg))
     params.update(_osc2_osc3_params(features, cfg))
     params.update(_sample_params(features, cfg))
+    params.update(_macro_params(features, cfg))
     params.update(_env2_env3_env4_params(features, cfg))
     params.update(_filter_params(features, cfg))
     params.update(_filter2_params(features, cfg))

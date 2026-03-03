@@ -139,6 +139,11 @@ CONTROLLED_PARAMS = (
     "eq_high_cutoff",
     "eq_band_gain",
     "eq_band_cutoff",
+    # Macros (0-1); assign in Vital Matrix to modulate params
+    "macro_control_1",
+    "macro_control_2",
+    "macro_control_3",
+    "macro_control_4",
 )
 
 

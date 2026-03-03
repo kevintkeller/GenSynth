@@ -26,6 +26,10 @@ PATCH_SAFE_RANGES = {
     "osc_1_unison_voices": (1, 16),
     "osc_2_unison_voices": (1, 16),
     "osc_3_unison_voices": (1, 16),
+    "macro_control_1": (0.0, 1.0),
+    "macro_control_2": (0.0, 1.0),
+    "macro_control_3": (0.0, 1.0),
+    "macro_control_4": (0.0, 1.0),
 }
 
 # When PATCH_CORE_ONLY=1, only these params are patched (no FX). Use to avoid Vital crash from effect params.
@@ -47,6 +51,7 @@ PATCH_CORE_ONLY_PARAMS = frozenset(
         "env_4_delay", "env_4_hold", "env_4_attack", "env_4_decay", "env_4_sustain", "env_4_release",
         "lfo_1_frequency", "lfo_2_frequency", "lfo_3_frequency", "lfo_4_frequency",
         "filter_2_on", "filter_2_cutoff", "filter_2_resonance", "filter_2_mix",
+        "macro_control_1", "macro_control_2", "macro_control_3", "macro_control_4",
     )
 )
 
