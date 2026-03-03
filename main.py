@@ -40,6 +40,6 @@ def generate_from_audio(input_audio_path: str, output_preset_path: str):
 
 if __name__ == "__main__":
     generate_from_audio(
-        "test-tech-house-pluck.wav",         # your audio file
+        "test-piano.wav",         # your audio file
         "generated-piano-5.vital"    # output preset
     )
